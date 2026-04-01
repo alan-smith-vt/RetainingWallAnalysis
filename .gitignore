@@ -4,3 +4,7 @@ pointClouds/
 config.py
 
 __pycache__/
+
+renders/legends/
+
+renders/slopes/
