@@ -9,6 +9,9 @@ characteristics of concrete retaining walls. For each wall, the script:
   4. Fits piecewise linear slopes in configurable segments.
   5. Colors points by slope magnitude and vertical displacement.
   6. Outputs colored point clouds, unrolled views, and slope CSVs.
+
+Cross-section slices are processed in parallel using multiprocessing with
+shared memory for the point cloud array.
 """
 
 import sys, os
@@ -19,21 +22,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 from tqdm import tqdm
+from multiprocessing import shared_memory, Pool
 import math
 
 
 def ensure_dir(filepath):
     """Create parent directories for a file path if they don't exist."""
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
 from config import (
     POINT_CLOUD_FILE, WALL_VERTICES_PATTERN, WALL_IDS, ANALYSIS_SPACINGS,
     SEGMENT_LENGTH, SLICE_HALF_WIDTH, TOP_OF_WALL_OFFSET,
     MAX_DISPLACEMENT_FOR_COLORS, EXPECTED_WALL_SLOPE,
     SLOPE_THRESHOLD, SLOPE_COLORMAP_RANGE,
     TOP_INCHES_FOR_NEW_SLOPE, DISCRETE_SLOPE_RANGES,
+    NUM_WORKERS,
 )
-
-print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
 
 def printf(msg):
@@ -149,188 +153,296 @@ def unrollSlices(pc_slices, spacing):
     return np.vstack(pc_slices)
 
 
-# ── Main execution ──────────────────────────────────────────────────────────
+# ── Shared memory helpers ───────────────────────────────────────────────────
 
-points_file = POINT_CLOUD_FILE
-thresh = SLOPE_THRESHOLD
+# Module-level references set by _init_worker
+_shm = None
+_points_master = None
+_pm_shape = None
+_pm_dtype = None
 
-for spacing in ANALYSIS_SPACINGS:
-    print("~" * 50)
-    printf("Processing retaining walls with %.1f slice spacing" % spacing)
-    print("~" * 50)
-    for wall_id in WALL_IDS:
-        print("~" * 50)
-        printf("Starting Wall %d" % wall_id)
-        print("~" * 50)
-        vertices_file = WALL_VERTICES_PATTERN.format(wall_id=wall_id)
 
-        pc_source = o3d.t.io.read_point_cloud(points_file)
-        points = pc_source.point.positions.numpy()
+def _init_worker(shm_name, shape, dtype):
+    """Attach to the shared memory block in each worker process."""
+    global _shm, _points_master, _pm_shape, _pm_dtype
+    _pm_shape = shape
+    _pm_dtype = dtype
+    _shm = shared_memory.SharedMemory(name=shm_name)
+    _points_master = np.ndarray(shape, dtype=dtype, buffer=_shm.buf)
 
-        vertices_source = o3d.t.io.read_point_cloud(vertices_file)
-        vertices = vertices_source.point.positions.numpy()
-        vertices = fixSpacing(vertices, spacing=spacing)
 
-        lines = []
-        line_colors = []
-        pc_slices = []
-        pc_slice_colors = []
-        slope_values = []
-        pc_slope_colors = []
-        pc_slices_rotated = []
-        lines_rotated = []
-        new_slopes = []
-        new_slope_colors = []
-        new_slope_lines = []
-        new_slope_lines_rotated = []
+def process_slice(args):
+    """
+    Process a single cross-section slice. Runs in a worker process.
 
-        segLength = SEGMENT_LENGTH
+    Reads points_master from shared memory. Returns a dict with all
+    per-slice outputs, or None if the slice is empty.
+    """
+    i, v1, v2, vertices, thresh, segLength, spacing = args
 
-        points_source = points.copy()
+    # Access shared points_master
+    points_master = _points_master
 
-        # Pre-filter points once to avoid repeated filtering
-        global_z_min = np.min(vertices[:, 2]) - 1.0
-        points_master = points_source[points_source[:, 2] > global_z_min, :]
+    z_min = min(v1[2], v2[2])
+    z_mask = points_master[:, 2] > z_min
+    points = points_master[z_mask, :]
 
-        for i in tqdm(range(len(vertices) - 1)):
-            v1 = vertices[i]
-            v2 = vertices[i + 1]
+    direction = v2 - v1
+    angle = -np.arctan2(direction[1], direction[0])
 
-            z_min = np.min([vertices[i, 2], vertices[i + 1, 2]])
-            z_mask = points_master[:, 2] > z_min
-            points = points_master[z_mask, :]
+    cos_a, sin_a = np.cos(angle), np.sin(angle)
+    rotation_matrix = np.array([[cos_a, -sin_a, 0],
+                                [sin_a, cos_a, 0],
+                                [0, 0, 1]])
 
-            direction = v2 - v1
-            angle = -np.arctan2(direction[1], direction[0])
-
-            cos_a, sin_a = np.cos(angle), np.sin(angle)
-            rotation_matrix = np.array([[cos_a, -sin_a, 0],
-                                        [sin_a, cos_a, 0],
+    cos_a_inv, sin_a_inv = np.cos(-angle), np.sin(-angle)
+    inverse_rotation_matrix = np.array([[cos_a_inv, -sin_a_inv, 0],
+                                        [sin_a_inv, cos_a_inv, 0],
                                         [0, 0, 1]])
 
-            cos_a_inv, sin_a_inv = np.cos(-angle), np.sin(-angle)
-            inverse_rotation_matrix = np.array([[cos_a_inv, -sin_a_inv, 0],
-                                                [sin_a_inv, cos_a_inv, 0],
-                                                [0, 0, 1]])
+    points_rotated = np.dot(points - v1, rotation_matrix.T) + v1
+    vertices_rotated = np.dot(vertices - v1, rotation_matrix.T) + v1
 
-            points_rotated = np.dot(points - v1, rotation_matrix.T) + v1
-            vertices_rotated = np.dot(vertices - v1, rotation_matrix.T) + v1
+    v1_rotated = vertices_rotated[i]
+    v2_rotated = vertices_rotated[i + 1]
 
-            v1_rotated = vertices_rotated[i]
-            v2_rotated = vertices_rotated[i + 1]
+    x_values = points_rotated[:, 0]
+    x_min, x_max = min(v1_rotated[0], v2_rotated[0]), max(v1_rotated[0], v2_rotated[0])
 
-            x_values = points_rotated[:, 0]
-            x_min, x_max = min(v1_rotated[0], v2_rotated[0]), max(v1_rotated[0], v2_rotated[0])
+    x_mask = (x_values >= x_min) & (x_values <= x_max)
+    pc_slice = points_rotated[x_mask]
 
-            x_mask = (x_values >= x_min) & (x_values <= x_max)
-            pc_slice = points_rotated[x_mask]
+    y_mask = np.abs(pc_slice[:, 1] - v1_rotated[1]) <= SLICE_HALF_WIDTH
+    pc_slice = pc_slice[y_mask]
 
-            y_mask = np.abs(pc_slice[:, 1] - v1_rotated[1]) <= SLICE_HALF_WIDTH
-            pc_slice = pc_slice[y_mask]
+    if len(pc_slice) == 0:
+        return None
 
-            if len(pc_slice) == 0:
-                continue
+    points_2d = pc_slice[:, 1:3]
+    sorted_indices = np.argsort(points_2d[:, 1])
+    points_2d = points_2d[sorted_indices]
 
-            points_2d = pc_slice[:, 1:3]
-            sorted_indices = np.argsort(points_2d[:, 1])
-            points_2d = points_2d[sorted_indices]
+    z_max = np.max(pc_slice[:, 2]) + TOP_OF_WALL_OFFSET
 
-            z_max = np.max(pc_slice[:, 2]) + TOP_OF_WALL_OFFSET
-            x_val = (v1_rotated[0] + v2_rotated[0]) / 2
+    numSlopes = max(int((z_max - z_min) / segLength), 1)
 
-            numSlopes = max(int((z_max - z_min) / segLength), 1)
+    # Piecewise slope fitting
+    piecewise_lines_unrotated = []
+    piecewise_line_colors = []
+    piecewise_lines_rotated = []
+    for j in range(numSlopes):
+        z1 = (j / numSlopes) * (z_max - z_min) + z_min
+        z2 = ((j + 1) / numSlopes) * (z_max - z_min) + z_min
 
-            lines_rotated_temp = []
-            line_colors_temp = []
-            for j in range(numSlopes):
-                z1 = (j / numSlopes) * (z_max - z_min) + z_min
-                z2 = ((j + 1) / numSlopes) * (z_max - z_min) + z_min
+        slope, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, z1, z2, v1_rotated[0], v2_rotated[0], thresh)
+        if slope is None:
+            continue
+        line_unrotated = np.dot(line - v1, inverse_rotation_matrix.T) + v1
+        piecewise_lines_unrotated.append(line_unrotated)
+        piecewise_line_colors.append(line_color)
+        piecewise_lines_rotated.append(line)
 
-                slope, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, z1, z2, v1_rotated[0], v2_rotated[0], thresh)
-                if slope is None:
-                    continue
-                line_unrotated = np.dot(line - v1, inverse_rotation_matrix.T) + v1
-                lines.append(line_unrotated)
-                line_colors_temp.append(line_color)
-                lines_rotated_temp.append(line)
+    if len(piecewise_lines_rotated) == 0:
+        lines_rotated_combined = None
+        line_colors_combined = None
+    else:
+        lines_rotated_combined = np.vstack(piecewise_lines_rotated)
+        line_colors_combined = np.vstack(piecewise_line_colors)
 
-            if len(lines_rotated_temp) > 0:
-                lines_rotated.append(np.vstack(lines_rotated_temp))
-                line_colors.append(np.vstack(line_colors_temp))
+    # Full-height fit
+    slope, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, z_min, z_max, v1_rotated[0], v2_rotated[0], thresh)
 
-            slope, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, z_min, z_max, v1_rotated[0], v2_rotated[0], thresh)
+    if slope is None:
+        return None
+    y_ref = slope * z_min + intercept
 
-            if slope is None:
-                continue
-            y_ref = slope * z_min + intercept
+    # New slope algorithm — measure deviation from expected batter
+    top18_ind = np.searchsorted(points_2d[:, 1], z_max - TOP_INCHES_FOR_NEW_SLOPE)
+    avg_y = np.mean(points_2d[top18_ind:, 0])
+    y_expected_top = y_ref + EXPECTED_WALL_SLOPE * (z_max - z_min)
+    delta_y = (avg_y - y_expected_top)
+    delta_z = z_max - z_min
+    new_slope = (delta_y / delta_z)
 
-            # New slope algorithm — measure deviation from expected batter
-            top18_ind = np.searchsorted(points_2d[:, 1], z_max - TOP_INCHES_FOR_NEW_SLOPE)
-            avg_y = np.mean(points_2d[top18_ind:, 0])
-            y_expected_top = y_ref + EXPECTED_WALL_SLOPE * (z_max - z_min)
-            delta_y = (avg_y - y_expected_top)
-            delta_z = z_max - z_min
-            new_slope = (delta_y / delta_z)
-            new_slopes.append(new_slope)
-            # new_slope is already a deviation from expected — map directly to centered jet
-            ns_mapped = np.clip((-new_slope * 100) / SLOPE_COLORMAP_RANGE * 0.5 + 0.5, 0, 1)
-            new_slope_color = np.tile(plt.cm.jet(ns_mapped)[:3], (line.shape[0], 1))
-            new_slope_colors.append(new_slope_color)
-            line_unrotated_full = np.dot(line - v1, inverse_rotation_matrix.T) + v1
-            new_slope_lines.append(line_unrotated_full)
-            new_slope_lines_rotated.append(line)
+    # new_slope is already a deviation — map directly to centered jet
+    ns_mapped = np.clip((-new_slope * 100) / SLOPE_COLORMAP_RANGE * 0.5 + 0.5, 0, 1)
+    new_slope_color = np.tile(plt.cm.jet(ns_mapped)[:3], (line.shape[0], 1))
+    line_unrotated_full = np.dot(line - v1, inverse_rotation_matrix.T) + v1
 
-            cmap = plt.cm.jet
+    cmap = plt.cm.jet
 
-            slope_values.append(slope)
+    pc_slice_unrotated = np.dot(pc_slice - v1, inverse_rotation_matrix.T) + v1
 
-            pc_slices_rotated.append(pc_slice)
+    # Displacement coloring: centered jet on expected batter
+    y_expected = y_ref + EXPECTED_WALL_SLOPE * (pc_slice[:, 2] - z_min)
+    pc_slice_deltas = -(pc_slice[:, 1] - y_expected) / MAX_DISPLACEMENT_FOR_COLORS
+    pc_slice_deltas_mapped = np.clip(pc_slice_deltas * 0.5 + 0.5, 0, 1)
+    colors_pc_slice = cmap(pc_slice_deltas_mapped)[:, :3]
 
-            pc_slice_unrotated = np.dot(pc_slice - v1, inverse_rotation_matrix.T) + v1
-            line_unrotated = np.dot(line - v1, inverse_rotation_matrix.T) + v1
+    return {
+        'i': i,
+        'slope': slope,
+        'new_slope': new_slope,
+        # Piecewise slope data
+        'lines_unrotated': piecewise_lines_unrotated,
+        'lines_rotated': lines_rotated_combined,
+        'line_colors': line_colors_combined,
+        # New slope data
+        'new_slope_color': new_slope_color,
+        'new_slope_line': line_unrotated_full,
+        'new_slope_line_rotated': line,
+        # Point cloud slice data
+        'pc_slice_rotated': pc_slice,
+        'pc_slice_unrotated': pc_slice_unrotated,
+        'pc_slice_colors': colors_pc_slice,
+    }
 
-            # Expected Y at each point's Z, accounting for wall batter
-            # Signed deviation centered on jet: blue = more batter, green/yellow = on-profile, red = less batter
-            y_expected = y_ref + EXPECTED_WALL_SLOPE * (pc_slice[:, 2] - z_min)
-            pc_slice_deltas = -(pc_slice[:, 1] - y_expected) / MAX_DISPLACEMENT_FOR_COLORS
-            pc_slice_deltas_mapped = np.clip(pc_slice_deltas * 0.5 + 0.5, 0, 1)
-            colors_pc_slice = cmap(pc_slice_deltas_mapped)[:, :3]
 
-            pc_slices.append(pc_slice_unrotated)
-            pc_slice_colors.append(colors_pc_slice)
+# ── Main execution ──────────────────────────────────────────────────────────
 
-        pc_slices_unrolled = unrollSlices(pc_slices_rotated, spacing)
-        lines_unrolled = unrollSlices(lines_rotated, spacing)
+if __name__ == '__main__':
+    print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-        pc_slices = np.vstack(pc_slices)
-        pc_slice_colors = np.vstack(pc_slice_colors)
-        lines = np.vstack(lines)
-        line_colors = np.vstack(line_colors)
-        slope_values = np.vstack(slope_values)
+    points_file = POINT_CLOUD_FILE
+    thresh = SLOPE_THRESHOLD
 
-        new_slope_colors = np.vstack(new_slope_colors)
-        new_slope_lines_all = np.vstack(new_slope_lines)
+    num_workers = NUM_WORKERS
+    if num_workers == 0:
+        num_workers = os.cpu_count() or 4
+    parallel = num_workers > 1
 
-        points_temp = []
-        colors_temp = []
-        for k in range(len(pc_slices_rotated)):
-            points, colors = getCrossSection(pc_slices_rotated[k], lines_rotated[k], "pointClouds/crossSections/wall_%d/section_%d.ply" % (wall_id, k), k, value_to_rgb_jet(slope_values[k][0])[:3])
-            points_temp.append(points)
-            colors_temp.append(colors)
-        points = np.vstack(points_temp)
-        colors = np.vstack(colors_temp)
-        savePoints(points, "pointClouds/unrolled/crossSections/wall_%d.ply" % wall_id, colors=colors)
+    for spacing in ANALYSIS_SPACINGS:
+        print("~" * 50)
+        printf("Processing retaining walls with %.1f slice spacing" % spacing)
+        print("~" * 50)
+        for wall_id in WALL_IDS:
+            print("~" * 50)
+            printf("Starting Wall %d" % wall_id)
+            print("~" * 50)
+            vertices_file = WALL_VERTICES_PATTERN.format(wall_id=wall_id)
 
-        if thresh is None:
-            savePoints(pc_slices, "pointClouds/displacements/pc_slice_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors)
-            savePoints(lines, "pointClouds/slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors)
-            ensure_dir("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing))
-            np.savetxt("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing), slope_values, delimiter=",", fmt='%.6f')
-            savePoints(new_slope_lines_all, "pointClouds/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
+            pc_source = o3d.t.io.read_point_cloud(points_file)
+            points = pc_source.point.positions.numpy()
 
-            savePoints(pc_slices_unrolled, "pointClouds/unrolled/displacements/pc_slices_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors)
-            savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors)
-            new_slope_lines_unrolled = unrollSlices(new_slope_lines_rotated, spacing)
-            savePoints(new_slope_lines_unrolled, "pointClouds/unrolled/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
-        else:
-            savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%3.3f_%.1f.ply" % (wall_id, thresh, spacing), colors=line_colors)
+            vertices_source = o3d.t.io.read_point_cloud(vertices_file)
+            vertices = vertices_source.point.positions.numpy()
+            vertices = fixSpacing(vertices, spacing=spacing)
+
+            points_source = points.copy()
+
+            # Pre-filter points once
+            global_z_min = np.min(vertices[:, 2]) - 1.0
+            points_master = points_source[points_source[:, 2] > global_z_min, :]
+
+            # Build argument list for each slice
+            n_slices = len(vertices) - 1
+            args_list = [
+                (i, vertices[i].copy(), vertices[i + 1].copy(), vertices.copy(), thresh, SEGMENT_LENGTH, spacing)
+                for i in range(n_slices)
+            ]
+
+            # Create shared memory for points_master
+            shm = shared_memory.SharedMemory(create=True, size=points_master.nbytes)
+            shm_array = np.ndarray(points_master.shape, dtype=points_master.dtype, buffer=shm.buf)
+            np.copyto(shm_array, points_master)
+
+            printf("Processing %d slices with %d workers" % (n_slices, num_workers))
+
+            if parallel:
+                pool = Pool(
+                    processes=num_workers,
+                    initializer=_init_worker,
+                    initargs=(shm.name, points_master.shape, points_master.dtype),
+                )
+                results_raw = list(tqdm(
+                    pool.imap(process_slice, args_list),
+                    total=n_slices,
+                ))
+                pool.close()
+                pool.join()
+            else:
+                # Serial mode — initialize the worker globals in this process
+                _init_worker(shm.name, points_master.shape, points_master.dtype)
+                results_raw = []
+                for args in tqdm(args_list):
+                    results_raw.append(process_slice(args))
+
+            # Clean up shared memory
+            shm.close()
+            shm.unlink()
+
+            # Filter out None results (empty slices) and sort by index
+            results = [r for r in results_raw if r is not None]
+            results.sort(key=lambda r: r['i'])
+
+            printf("Assembling %d valid slices" % len(results))
+
+            # Assemble outputs from results
+            lines = []
+            line_colors = []
+            pc_slices = []
+            pc_slice_colors = []
+            slope_values = []
+            pc_slices_rotated = []
+            lines_rotated = []
+            new_slopes = []
+            new_slope_colors = []
+            new_slope_lines = []
+            new_slope_lines_rotated = []
+
+            for r in results:
+                slope_values.append(r['slope'])
+                new_slopes.append(r['new_slope'])
+
+                for lu in r['lines_unrotated']:
+                    lines.append(lu)
+
+                if r['lines_rotated'] is not None:
+                    lines_rotated.append(r['lines_rotated'])
+                    line_colors.append(r['line_colors'])
+
+                new_slope_colors.append(r['new_slope_color'])
+                new_slope_lines.append(r['new_slope_line'])
+                new_slope_lines_rotated.append(r['new_slope_line_rotated'])
+
+                pc_slices_rotated.append(r['pc_slice_rotated'])
+                pc_slices.append(r['pc_slice_unrotated'])
+                pc_slice_colors.append(r['pc_slice_colors'])
+
+            pc_slices_unrolled = unrollSlices([s.copy() for s in pc_slices_rotated], spacing)
+            lines_unrolled = unrollSlices([lr.copy() for lr in lines_rotated], spacing)
+
+            pc_slices = np.vstack(pc_slices)
+            pc_slice_colors = np.vstack(pc_slice_colors)
+            lines = np.vstack(lines)
+            line_colors = np.vstack(line_colors)
+            slope_values = np.vstack(slope_values)
+
+            new_slope_colors = np.vstack(new_slope_colors)
+            new_slope_lines_all = np.vstack(new_slope_lines)
+
+            points_temp = []
+            colors_temp = []
+            for k in range(len(pc_slices_rotated)):
+                pts, cols = getCrossSection(pc_slices_rotated[k], lines_rotated[k], "pointClouds/crossSections/wall_%d/section_%d.ply" % (wall_id, k), k, value_to_rgb_jet(slope_values[k][0])[:3])
+                points_temp.append(pts)
+                colors_temp.append(cols)
+            pts = np.vstack(points_temp)
+            cols = np.vstack(colors_temp)
+            savePoints(pts, "pointClouds/unrolled/crossSections/wall_%d.ply" % wall_id, colors=cols)
+
+            if thresh is None:
+                savePoints(pc_slices, "pointClouds/displacements/pc_slice_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors)
+                savePoints(lines, "pointClouds/slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors)
+                ensure_dir("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing))
+                np.savetxt("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing), slope_values, delimiter=",", fmt='%.6f')
+                savePoints(new_slope_lines_all, "pointClouds/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
+
+                savePoints(pc_slices_unrolled, "pointClouds/unrolled/displacements/pc_slices_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors)
+                savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors)
+                new_slope_lines_unrolled = unrollSlices([nsr.copy() for nsr in new_slope_lines_rotated], spacing)
+                savePoints(new_slope_lines_unrolled, "pointClouds/unrolled/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
+            else:
+                savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%3.3f_%.1f.ply" % (wall_id, thresh, spacing), colors=line_colors)
+
+            printf("Wall %d complete" % wall_id)

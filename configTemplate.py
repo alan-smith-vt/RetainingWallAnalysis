@@ -20,6 +20,7 @@ WALL_VERTICES_PATTERN = "pointClouds/Vertices.ply"
 # ---------------------------------------------------------------------------
 # Wall analysis (analysis/wall_analysis.py)
 # ---------------------------------------------------------------------------
+NUM_WORKERS = 0                 # Parallel workers for wall analysis (0 = auto, 1 = serial)
 WALL_IDS = [1]                  # Which walls to process
 ANALYSIS_SPACINGS = [1]         # Meters between cross-section slices
 SEGMENT_LENGTH = 10             # Meters per piecewise linear fit segment
