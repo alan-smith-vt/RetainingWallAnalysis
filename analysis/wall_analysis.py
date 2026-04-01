@@ -270,7 +270,9 @@ for spacing in ANALYSIS_SPACINGS:
             delta_z = z_max - z_min
             new_slope = (delta_y / delta_z)
             new_slopes.append(new_slope)
-            new_slope_color = np.tile(value_to_rgb_jet(new_slope), (line.shape[0], 1))
+            # new_slope is already a deviation from expected — map directly to centered jet
+            ns_mapped = np.clip((-new_slope * 100) / SLOPE_COLORMAP_RANGE * 0.5 + 0.5, 0, 1)
+            new_slope_color = np.tile(plt.cm.jet(ns_mapped)[:3], (line.shape[0], 1))
             new_slope_colors.append(new_slope_color)
 
             cmap = plt.cm.jet
