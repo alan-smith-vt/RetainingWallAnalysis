@@ -249,9 +249,13 @@ def process_slice(args):
             continue
 
         # Re-generate the line geometry over the draw region only
-        z_draw = np.linspace(draw_z1, draw_z2, 100)
+        # Scale point count proportionally to draw height so total output stays constant
+        draw_height = draw_z2 - draw_z1
+        n_z = max(int(100 * draw_height / wall_height), 2)
+        n_x = max(int(100 * draw_height / wall_height), 2)
+        z_draw = np.linspace(draw_z1, draw_z2, n_z)
         y_draw = slope_val * z_draw + intercept
-        x_vals = np.linspace(v1_rotated[0], v2_rotated[0], 100)
+        x_vals = np.linspace(v1_rotated[0], v2_rotated[0], n_x)
         draw_lines = []
         draw_colors = []
         slope_color = value_to_rgb(slope_val, thresh)
