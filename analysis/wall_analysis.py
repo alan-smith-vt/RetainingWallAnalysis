@@ -284,7 +284,7 @@ for spacing in ANALYSIS_SPACINGS:
 
             # Expected Y at each point's Z, accounting for wall batter
             y_expected = y_ref + EXPECTED_WALL_SLOPE * (pc_slice[:, 2] - z_min)
-            pc_slice_deltas = -(pc_slice[:, 1] - y_expected) / MAX_DISPLACEMENT_FOR_COLORS
+            pc_slice_deltas = np.abs(pc_slice[:, 1] - y_expected) / MAX_DISPLACEMENT_FOR_COLORS
             colors_pc_slice = cmap(pc_slice_deltas)[:, :3]
 
             pc_slices.append(pc_slice_unrotated)
