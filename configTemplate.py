@@ -23,7 +23,9 @@ WALL_VERTICES_PATTERN = "pointClouds/Vertices.ply"
 WALL_IDS = [1]                  # Which walls to process
 ANALYSIS_SPACINGS = [1]         # Meters between cross-section slices
 SEGMENT_LENGTH = 10             # Meters per piecewise linear fit segment
-SLICE_HALF_WIDTH = 0.5          # Meters from wall centerline to include points
+SLICE_HALF_WIDTH = 1.5          # Meters from wall base Y to include points
+                                # Must exceed wall_height * batter + margin for
+                                # battered walls (e.g. 11m wall at 8% needs > 0.88m)
 TOP_OF_WALL_OFFSET = -0.25      # Meters — removes the lip at the top of the wall
 MAX_DISPLACEMENT_FOR_COLORS = 0.3  # Meters — normalizes displacement color mapping
 EXPECTED_WALL_SLOPE = -0.04     # Expected batter as Y/Z ratio (0 = vertical)
