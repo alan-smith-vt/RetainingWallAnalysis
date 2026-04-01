@@ -87,12 +87,10 @@ def value_to_rgb_discrete(percent):
 
 
 def value_to_rgb_jet(percent):
-    # Subtract expected batter so colors represent deviation from design
+    # Centered jet: more batter than expected = blue, less = red, on-profile = green/yellow
     deviation = percent - EXPECTED_WALL_SLOPE
-    if deviation > 0:
-        return hex_to_rgb('#000000')
     cmap = plt.cm.jet
-    mapped = (-deviation * 100) / SLOPE_COLORMAP_RANGE
+    mapped = np.clip((-deviation * 100) / SLOPE_COLORMAP_RANGE * 0.5 + 0.5, 0, 1)
     return cmap(mapped)[:3]
 
 
@@ -100,13 +98,9 @@ def value_to_rgb(percent, thresh):
     if thresh is None:
         return value_to_rgb_jet(percent)
     deviation = percent - EXPECTED_WALL_SLOPE
-    if deviation < thresh:
-        deviation = thresh
-        cmap = plt.cm.jet
-        mapped = (-deviation * 100) / SLOPE_COLORMAP_RANGE
-        return cmap(mapped)[:3]
-    else:
+    if abs(deviation) < abs(thresh):
         return hex_to_rgb('#ffffff')
+    return value_to_rgb_jet(percent)
 
 
 def fitLineZ1toZ2(points_2d, z1, z2, x1, x2, thresh):
@@ -289,10 +283,9 @@ for spacing in ANALYSIS_SPACINGS:
             line_unrotated = np.dot(line - v1, inverse_rotation_matrix.T) + v1
 
             # Expected Y at each point's Z, accounting for wall batter
-            # Signed deviation: positive = forward of expected, negative = behind
-            # Mapped to jet centered at 0.5: blue = behind, green/yellow = on-profile, red = forward
+            # Signed deviation centered on jet: blue = more batter, green/yellow = on-profile, red = less batter
             y_expected = y_ref + EXPECTED_WALL_SLOPE * (pc_slice[:, 2] - z_min)
-            pc_slice_deltas = (pc_slice[:, 1] - y_expected) / MAX_DISPLACEMENT_FOR_COLORS
+            pc_slice_deltas = -(pc_slice[:, 1] - y_expected) / MAX_DISPLACEMENT_FOR_COLORS
             pc_slice_deltas_mapped = np.clip(pc_slice_deltas * 0.5 + 0.5, 0, 1)
             colors_pc_slice = cmap(pc_slice_deltas_mapped)[:, :3]
 
