@@ -226,6 +226,9 @@ for spacing in ANALYSIS_SPACINGS:
             y_mask = np.abs(pc_slice[:, 1] - v1_rotated[1]) <= SLICE_HALF_WIDTH
             pc_slice = pc_slice[y_mask]
 
+            if len(pc_slice) == 0:
+                continue
+
             points_2d = pc_slice[:, 1:3]
             sorted_indices = np.argsort(points_2d[:, 1])
             points_2d = points_2d[sorted_indices]
