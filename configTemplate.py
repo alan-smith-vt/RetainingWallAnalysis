@@ -14,8 +14,8 @@ METERS_TO_FEET = 3.28084
 # ---------------------------------------------------------------------------
 # Input data paths
 # ---------------------------------------------------------------------------
-POINT_CLOUD_FILE = "pointClouds/KCLN_noColorCrop2_4cm.ply"
-WALL_VERTICES_PATTERN = "pointClouds/wall_{wall_id}_vertices_all.ply"
+POINT_CLOUD_FILE = "pointClouds/charlotteWall_Level7_clean.ply"
+WALL_VERTICES_PATTERN = "pointClouds/Vertices.ply"
 
 # ---------------------------------------------------------------------------
 # Wall analysis (analysis/wall_analysis.py)
