@@ -26,7 +26,10 @@ SEGMENT_LENGTH = 10             # Meters per piecewise linear fit segment
 SLICE_HALF_WIDTH = 0.5          # Meters from wall centerline to include points
 TOP_OF_WALL_OFFSET = -0.25      # Meters — removes the lip at the top of the wall
 MAX_DISPLACEMENT_FOR_COLORS = 0.3  # Meters — normalizes displacement color mapping
-EXPECTED_WALL_SLOPE = 0.04      # Expected batter as Y/Z ratio (0 = vertical, 0.04 = 4%)
+EXPECTED_WALL_SLOPE = -0.04     # Expected batter as Y/Z ratio (0 = vertical)
+                                # Sign depends on polyline direction: if wall leans
+                                # away from the traced side, use negative. Flip sign
+                                # if the entire wall renders as one solid color.
 SLOPE_THRESHOLD = None          # Percent slope threshold (None = use jet colormap)
 SLOPE_COLORMAP_RANGE = 3.5      # Maps 0 to -3.5% slope onto 0–1 for jet colormap
 TOP_INCHES_FOR_NEW_SLOPE = 0.45 # Meters below z_max for averaging (≈18 inches)
