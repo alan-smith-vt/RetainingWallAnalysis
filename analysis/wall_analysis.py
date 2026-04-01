@@ -181,6 +181,8 @@ for spacing in ANALYSIS_SPACINGS:
         lines_rotated = []
         new_slopes = []
         new_slope_colors = []
+        new_slope_lines = []
+        new_slope_lines_rotated = []
 
         segLength = SEGMENT_LENGTH
 
@@ -274,6 +276,9 @@ for spacing in ANALYSIS_SPACINGS:
             ns_mapped = np.clip((-new_slope * 100) / SLOPE_COLORMAP_RANGE * 0.5 + 0.5, 0, 1)
             new_slope_color = np.tile(plt.cm.jet(ns_mapped)[:3], (line.shape[0], 1))
             new_slope_colors.append(new_slope_color)
+            line_unrotated_full = np.dot(line - v1, inverse_rotation_matrix.T) + v1
+            new_slope_lines.append(line_unrotated_full)
+            new_slope_lines_rotated.append(line)
 
             cmap = plt.cm.jet
 
@@ -304,6 +309,7 @@ for spacing in ANALYSIS_SPACINGS:
         slope_values = np.vstack(slope_values)
 
         new_slope_colors = np.vstack(new_slope_colors)
+        new_slope_lines_all = np.vstack(new_slope_lines)
 
         points_temp = []
         colors_temp = []
@@ -320,10 +326,11 @@ for spacing in ANALYSIS_SPACINGS:
             savePoints(lines, "pointClouds/slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors)
             ensure_dir("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing))
             np.savetxt("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing), slope_values, delimiter=",", fmt='%.6f')
-            savePoints(lines, "pointClouds/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
+            savePoints(new_slope_lines_all, "pointClouds/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
 
             savePoints(pc_slices_unrolled, "pointClouds/unrolled/displacements/pc_slices_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors)
             savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors)
-            savePoints(lines_unrolled, "pointClouds/unrolled/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
+            new_slope_lines_unrolled = unrollSlices(new_slope_lines_rotated, spacing)
+            savePoints(new_slope_lines_unrolled, "pointClouds/unrolled/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
         else:
             savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%3.3f_%.1f.ply" % (wall_id, thresh, spacing), colors=line_colors)
