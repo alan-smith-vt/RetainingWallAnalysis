@@ -24,6 +24,11 @@ from config import (
 print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+
 def printf(msg):
     print("[%s]: %s" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
 
@@ -87,4 +92,5 @@ for i in tqdm(range(len(files))):
 
     res = projectToImage1000_color(points, extents, colors, x_axis, y_axis, z_axis, sz=sz)
 
+    ensure_dir('%s%s_elevation.png' % (saveLoc, name))
     cv2.imwrite('%s%s_elevation.png' % (saveLoc, name), res)

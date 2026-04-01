@@ -25,6 +25,13 @@ from config import (
 print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    dirpath = os.path.dirname(filepath)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
+
+
 def printf(msg):
     print("[%s]: %s" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
 
@@ -79,6 +86,7 @@ def savePoints(points, filePath, colors=None):
     pcd.point.positions = points
     if colors is not None:
         pcd.point.colors = colors
+    ensure_dir(filePath)
     o3d.t.io.write_point_cloud(filePath, pcd)
 
 
@@ -128,4 +136,5 @@ for i in tqdm(range(len(files))):
 
     res = projectToImage1000_color(points, extents, colors, x_axis, y_axis, z_axis, sz=sz)
 
+    ensure_dir('%s%s_elevation.png' % (saveLoc, name))
     cv2.imwrite('%s%s_elevation.png' % (saveLoc, name), res)

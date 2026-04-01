@@ -19,6 +19,11 @@ from tqdm import tqdm
 from config import DENSITY_RADIUS, DENSITY_COLORMAP, DENSITY_Z_FILTER
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+
 def zero_pc(pc):
     """Zero-center the point cloud."""
     points = pc.point.positions.numpy()
@@ -89,6 +94,7 @@ def process_point_cloud_with_density(file, radius=None, colormap=None, save_path
     pc_colored.colors = o3d.utility.Vector3dVector(colors)
 
     if save_path:
+        ensure_dir(save_path)
         o3d.io.write_point_cloud(save_path, pc_colored)
 
     return pc_colored, densities
@@ -134,6 +140,7 @@ if __name__ == "__main__":
     cbar = fig.colorbar(sm, cax=ax, orientation='horizontal')
     cbar.set_label('Relative Point Density (Low to High)', fontsize=12)
 
+    ensure_dir(saveLoc + 'density_colorbar.png')
     plt.savefig(saveLoc + 'density_colorbar.png', dpi=150, bbox_inches='tight')
     plt.close()
 

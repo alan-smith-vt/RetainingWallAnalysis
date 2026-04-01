@@ -15,6 +15,11 @@ from config import DOWNSAMPLE_VOXEL_SIZE, DOWNSAMPLE_INPUT, DOWNSAMPLE_OUTPUT
 print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+
 def printf(msg):
     print("[%s]: %s" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
 
@@ -24,5 +29,6 @@ printf("Loaded pc")
 
 pc_source = pc_source.voxel_down_sample(voxel_size=DOWNSAMPLE_VOXEL_SIZE)
 printf("Downsampled pc")
+ensure_dir(DOWNSAMPLE_OUTPUT)
 o3d.t.io.write_point_cloud(DOWNSAMPLE_OUTPUT, pc_source)
 printf("Saved downsampled pc")

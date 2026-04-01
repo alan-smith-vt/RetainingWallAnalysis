@@ -25,6 +25,11 @@ from config import (
 print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+
 def printf(msg):
     print("[%s]: %s" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
 
@@ -117,4 +122,5 @@ for target in [RENDER_TARGET]:
         else:
             pattern = r'unrolled_(\d+_-?\d+\.\d+(?:_\d+\.\d+)?)\.ply$'
             name = re.search(pattern, file).group(1)
+        ensure_dir('%s%s.png' % (saveLoc, name))
         cv2.imwrite('%s%s.png' % (saveLoc, name), res)

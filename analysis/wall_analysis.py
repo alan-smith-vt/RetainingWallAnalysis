@@ -20,6 +20,11 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from tqdm import tqdm
 import math
+
+
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
 from config import (
     POINT_CLOUD_FILE, WALL_VERTICES_PATTERN, WALL_IDS, ANALYSIS_SPACINGS,
     SEGMENT_LENGTH, SLICE_HALF_WIDTH, TOP_OF_WALL_OFFSET,
@@ -36,6 +41,7 @@ def printf(msg):
 
 
 def savePoints(points, filePath, colors=None):
+    ensure_dir(filePath)
     pcd = o3d.t.geometry.PointCloud()
     pcd.point.positions = points
     if colors is not None:
@@ -283,9 +289,12 @@ for spacing in ANALYSIS_SPACINGS:
             line_unrotated = np.dot(line - v1, inverse_rotation_matrix.T) + v1
 
             # Expected Y at each point's Z, accounting for wall batter
+            # Signed deviation: positive = forward of expected, negative = behind
+            # Mapped to jet centered at 0.5: blue = behind, green/yellow = on-profile, red = forward
             y_expected = y_ref + EXPECTED_WALL_SLOPE * (pc_slice[:, 2] - z_min)
-            pc_slice_deltas = np.abs(pc_slice[:, 1] - y_expected) / MAX_DISPLACEMENT_FOR_COLORS
-            colors_pc_slice = cmap(pc_slice_deltas)[:, :3]
+            pc_slice_deltas = (pc_slice[:, 1] - y_expected) / MAX_DISPLACEMENT_FOR_COLORS
+            pc_slice_deltas_mapped = np.clip(pc_slice_deltas * 0.5 + 0.5, 0, 1)
+            colors_pc_slice = cmap(pc_slice_deltas_mapped)[:, :3]
 
             pc_slices.append(pc_slice_unrotated)
             pc_slice_colors.append(colors_pc_slice)
@@ -314,6 +323,7 @@ for spacing in ANALYSIS_SPACINGS:
         if thresh is None:
             savePoints(pc_slices, "pointClouds/displacements/pc_slice_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors)
             savePoints(lines, "pointClouds/slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors)
+            ensure_dir("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing))
             np.savetxt("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing), slope_values, delimiter=",", fmt='%.6f')
             savePoints(lines, "pointClouds/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
 

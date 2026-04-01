@@ -28,10 +28,7 @@ SLICE_HALF_WIDTH = 1.5          # Meters from wall base Y to include points
                                 # battered walls (e.g. 11m wall at 8% needs > 0.88m)
 TOP_OF_WALL_OFFSET = -0.25      # Meters — removes the lip at the top of the wall
 MAX_DISPLACEMENT_FOR_COLORS = 0.3  # Meters — normalizes displacement color mapping
-EXPECTED_WALL_SLOPE = -0.04     # Expected batter as Y/Z ratio (0 = vertical)
-                                # Sign depends on polyline direction: if wall leans
-                                # away from the traced side, use negative. Flip sign
-                                # if the entire wall renders as one solid color.
+EXPECTED_WALL_SLOPE = 0.04      # Expected batter as Y/Z ratio (0 = vertical, 0.04 = 4%)
 SLOPE_THRESHOLD = None          # Percent slope threshold (None = use jet colormap)
 SLOPE_COLORMAP_RANGE = 3.5      # Maps 0 to -3.5% slope onto 0–1 for jet colormap
 TOP_INCHES_FOR_NEW_SLOPE = 0.45 # Meters below z_max for averaging (≈18 inches)

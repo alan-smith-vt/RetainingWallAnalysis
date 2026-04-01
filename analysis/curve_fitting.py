@@ -32,11 +32,17 @@ from config import (
 print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+
 def printf(msg):
     print("[%s]: %s" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
 
 
 def savePoints(points, filePath, color=None):
+    ensure_dir(filePath)
     pcd = o3d.t.geometry.PointCloud()
     pcd.point.positions = points
     if color is not None:
@@ -185,4 +191,5 @@ for file in files:
 
     res = np.column_stack([x_sample * METERS_TO_FEET, y_sample])
 
+    ensure_dir("excel_data/wall_%s_settlement.csv" % wall_id)
     np.savetxt("excel_data/wall_%s_settlement.csv" % wall_id, res, delimiter=",")

@@ -16,6 +16,11 @@ import glob
 from config import SLOPE_LABEL_FONT_SIZE, SLOPE_LABEL_COLOR
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+
 def add_vertical_text_pil(image, text_list, font_size=20, color=(255, 255, 255)):
     """Add vertically oriented text using PIL."""
     if isinstance(image, np.ndarray):
@@ -92,6 +97,7 @@ for file in files:
     text_labels = np.append(text_labels, '')
 
     result_pil = add_vertical_text_pil(source_image, text_labels, font_size=SLOPE_LABEL_FONT_SIZE, color=SLOPE_LABEL_COLOR)
+    ensure_dir('renders/slopes/labeled/slope_%s_labeled.png' % name)
     cv2.imwrite('renders/slopes/labeled/slope_%s_labeled.png' % name, result_pil)
 
     print("Vertical text images created successfully!")

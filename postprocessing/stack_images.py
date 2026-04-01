@@ -5,8 +5,14 @@ Vertically concatenates per-wall elevation overlay images into a single
 combined image, padding narrower images to match the widest.
 """
 
+import os
 import cv2
 import numpy as np
+
+
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
 # ── Main execution ──────────────────────────────────────────────────────────
 
@@ -29,4 +35,5 @@ for img in imgs:
 
 # Stack and save
 stacked = cv2.vconcat(padded_imgs)
+ensure_dir("renders/overlays/elevations/combined.png")
 cv2.imwrite("renders/overlays/elevations/combined.png", stacked)

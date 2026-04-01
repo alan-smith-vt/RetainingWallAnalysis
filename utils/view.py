@@ -13,6 +13,11 @@ import matplotlib.pyplot as plt
 from config import WALL_SCALE_FACTORS
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+
 def display_image(image):
     if image is None:
         print("Error: Could not load image")
@@ -44,6 +49,7 @@ new_height = int(height * scale_factor)
 
 resized_image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
 
+ensure_dir('renders/wall_%d_dwg.png' % wall_id)
 cv2.imwrite('renders/wall_%d_dwg.png' % wall_id, resized_image)
 
 print(f"Original size: {width} x {height}")

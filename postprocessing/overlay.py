@@ -14,6 +14,11 @@ import numpy as np
 from config import OVERLAY_TRANSPARENCY, WALL_OVERLAY_OFFSETS
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+
 def overlay_images(base_image_path, overlay_image_path, x_offset, y_offset, transparency=None):
     """
     Overlay two images with transparency and offset.
@@ -93,5 +98,6 @@ for wall_id in [1, 2, 3]:
     result_image = overlay_images(base_path, overlay_path, x_offset, y_offset)
 
     if result_image is not None:
+        ensure_dir("renders/overlays/elevations/wall_%d_overlay.jpg" % wall_id)
         cv2.imwrite("renders/overlays/elevations/wall_%d_overlay.jpg" % wall_id, result_image)
         print("Wall %d, Overlaid image saved" % wall_id)

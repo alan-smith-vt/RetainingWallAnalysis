@@ -23,6 +23,11 @@ from config import (
 )
 
 
+def ensure_dir(filepath):
+    """Create parent directories for a file path if they don't exist."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+
 def printf(msg):
     print("[%s]: %s" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg))
 
@@ -192,6 +197,7 @@ for file in files:
 
     overlay_img = cv2.imread("renders/elevations/curves/%s_elevation.png" % wall_id)
     result_image = overlay_images_white_mask(new_img, overlay_img, padx, 0)
+    ensure_dir("renders/overlays/elevations/%s.png" % wall_id)
     cv2.imwrite("renders/overlays/elevations/%s.png" % wall_id, result_image)
     printf(f"Completed Wall #{wall_id}")
 
