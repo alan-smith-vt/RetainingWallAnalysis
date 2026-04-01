@@ -1,0 +1,32 @@
+"""
+Image stacker.
+
+Vertically concatenates per-wall elevation overlay images into a single
+combined image, padding narrower images to match the widest.
+"""
+
+import cv2
+import numpy as np
+
+# ── Main execution ──────────────────────────────────────────────────────────
+
+imgs = []
+for wall_id in [1, 2, 3]:
+    file = "renders/overlays/elevations/%d.png" % wall_id
+    img = cv2.imread(file)
+    imgs.append(img)
+
+# Find max width
+max_width = max(img.shape[1] for img in imgs)
+
+# Pad images to max width with white
+padded_imgs = []
+for img in imgs:
+    if img.shape[1] < max_width:
+        pad = max_width - img.shape[1]
+        img = cv2.copyMakeBorder(img, 0, 0, 0, pad, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+    padded_imgs.append(img)
+
+# Stack and save
+stacked = cv2.vconcat(padded_imgs)
+cv2.imwrite("renders/overlays/elevations/combined.png", stacked)
