@@ -23,7 +23,8 @@ import math
 from config import (
     POINT_CLOUD_FILE, WALL_VERTICES_PATTERN, WALL_IDS, ANALYSIS_SPACINGS,
     SEGMENT_LENGTH, SLICE_HALF_WIDTH, TOP_OF_WALL_OFFSET,
-    MAX_DISPLACEMENT_FOR_COLORS, SLOPE_THRESHOLD, SLOPE_COLORMAP_RANGE,
+    MAX_DISPLACEMENT_FOR_COLORS, EXPECTED_WALL_SLOPE,
+    SLOPE_THRESHOLD, SLOPE_COLORMAP_RANGE,
     TOP_INCHES_FOR_NEW_SLOPE, DISCRETE_SLOPE_RANGES,
 )
 
@@ -80,21 +81,24 @@ def value_to_rgb_discrete(percent):
 
 
 def value_to_rgb_jet(percent):
-    if percent > 0:
+    # Subtract expected batter so colors represent deviation from design
+    deviation = percent - EXPECTED_WALL_SLOPE
+    if deviation > 0:
         return hex_to_rgb('#000000')
     cmap = plt.cm.jet
-    percent = (-percent * 100) / SLOPE_COLORMAP_RANGE
-    return cmap(percent)[:3]
+    mapped = (-deviation * 100) / SLOPE_COLORMAP_RANGE
+    return cmap(mapped)[:3]
 
 
 def value_to_rgb(percent, thresh):
     if thresh is None:
         return value_to_rgb_jet(percent)
-    if percent < thresh:
-        percent = thresh
+    deviation = percent - EXPECTED_WALL_SLOPE
+    if deviation < thresh:
+        deviation = thresh
         cmap = plt.cm.jet
-        percent = (-percent * 100) / SLOPE_COLORMAP_RANGE
-        return cmap(percent)[:3]
+        mapped = (-deviation * 100) / SLOPE_COLORMAP_RANGE
+        return cmap(mapped)[:3]
     else:
         return hex_to_rgb('#ffffff')
 
@@ -255,10 +259,11 @@ for spacing in ANALYSIS_SPACINGS:
                 continue
             y_ref = slope * z_min + intercept
 
-            # New slope algorithm
+            # New slope algorithm — measure deviation from expected batter
             top18_ind = np.searchsorted(points_2d[:, 1], z_max - TOP_INCHES_FOR_NEW_SLOPE)
             avg_y = np.mean(points_2d[top18_ind:, 0])
-            delta_y = (avg_y - y_ref)
+            y_expected_top = y_ref + EXPECTED_WALL_SLOPE * (z_max - z_min)
+            delta_y = (avg_y - y_expected_top)
             delta_z = z_max - z_min
             new_slope = (delta_y / delta_z)
             new_slopes.append(new_slope)
@@ -274,7 +279,9 @@ for spacing in ANALYSIS_SPACINGS:
             pc_slice_unrotated = np.dot(pc_slice - v1, inverse_rotation_matrix.T) + v1
             line_unrotated = np.dot(line - v1, inverse_rotation_matrix.T) + v1
 
-            pc_slice_deltas = -(pc_slice[:, 1] - y_ref) / MAX_DISPLACEMENT_FOR_COLORS
+            # Expected Y at each point's Z, accounting for wall batter
+            y_expected = y_ref + EXPECTED_WALL_SLOPE * (pc_slice[:, 2] - z_min)
+            pc_slice_deltas = -(pc_slice[:, 1] - y_expected) / MAX_DISPLACEMENT_FOR_COLORS
             colors_pc_slice = cmap(pc_slice_deltas)[:, :3]
 
             pc_slices.append(pc_slice_unrotated)
