@@ -32,7 +32,7 @@ def ensure_dir(filepath):
 
 from config import (
     POINT_CLOUD_FILE, WALL_VERTICES_PATTERN, WALL_IDS, ANALYSIS_SPACINGS,
-    SEGMENT_LENGTH, SLICE_HALF_WIDTH, TOP_OF_WALL_OFFSET,
+    SEGMENT_LENGTH, SEGMENT_OVERLAP, SLICE_HALF_WIDTH, TOP_OF_WALL_OFFSET,
     MAX_DISPLACEMENT_FOR_COLORS, EXPECTED_WALL_SLOPE,
     SLOPE_THRESHOLD, SLOPE_COLORMAP_RANGE,
     TOP_INCHES_FOR_NEW_SLOPE, DISCRETE_SLOPE_RANGES,
@@ -224,23 +224,50 @@ def process_slice(args):
 
     z_max = np.max(pc_slice[:, 2]) + TOP_OF_WALL_OFFSET
 
-    numSlopes = max(int((z_max - z_min) / segLength), 1)
+    # Piecewise slope fitting with overlap
+    # step = how far apart segment centers are; segLength = data window for fitting
+    # The line is drawn only over the step region (center portion), but the
+    # slope is fit using the full segLength of data around that center.
+    step = max(segLength - SEGMENT_OVERLAP, 0.1)
+    wall_height = z_max - z_min
+    numSlopes = max(int(wall_height / step), 1)
 
-    # Piecewise slope fitting
     piecewise_lines_unrotated = []
     piecewise_line_colors = []
     piecewise_lines_rotated = []
     for j in range(numSlopes):
-        z1 = (j / numSlopes) * (z_max - z_min) + z_min
-        z2 = ((j + 1) / numSlopes) * (z_max - z_min) + z_min
+        # Center of this segment's drawn region
+        draw_z1 = z_min + j * step
+        draw_z2 = min(draw_z1 + step, z_max)
 
-        slope, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, z1, z2, v1_rotated[0], v2_rotated[0], thresh)
-        if slope is None:
+        # Expanded data window for fitting (extends overlap/2 above and below)
+        fit_z1 = max(draw_z1 - SEGMENT_OVERLAP / 2, z_min)
+        fit_z2 = min(draw_z2 + SEGMENT_OVERLAP / 2, z_max)
+
+        slope_val, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, fit_z1, fit_z2, v1_rotated[0], v2_rotated[0], thresh)
+        if slope_val is None:
             continue
-        line_unrotated = np.dot(line - v1, inverse_rotation_matrix.T) + v1
+
+        # Re-generate the line geometry over the draw region only
+        z_draw = np.linspace(draw_z1, draw_z2, 100)
+        y_draw = slope_val * z_draw + intercept
+        x_vals = np.linspace(v1_rotated[0], v2_rotated[0], 100)
+        draw_lines = []
+        draw_colors = []
+        slope_color = value_to_rgb(slope_val, thresh)
+        for x_val in x_vals[1:]:
+            x = np.ones_like(z_draw) * x_val
+            seg = np.column_stack([x, y_draw, z_draw])
+            draw_lines.append(seg)
+            draw_colors.append(np.tile(slope_color, (seg.shape[0], 1)))
+
+        line_seg = np.vstack(draw_lines)
+        line_seg_colors = np.vstack(draw_colors)
+
+        line_unrotated = np.dot(line_seg - v1, inverse_rotation_matrix.T) + v1
         piecewise_lines_unrotated.append(line_unrotated)
-        piecewise_line_colors.append(line_color)
-        piecewise_lines_rotated.append(line)
+        piecewise_line_colors.append(line_seg_colors)
+        piecewise_lines_rotated.append(line_seg)
 
     if len(piecewise_lines_rotated) == 0:
         lines_rotated_combined = None

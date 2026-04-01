@@ -23,7 +23,11 @@ WALL_VERTICES_PATTERN = "pointClouds/Vertices.ply"
 NUM_WORKERS = 0                 # Parallel workers for wall analysis (0 = auto, 1 = serial)
 WALL_IDS = [1]                  # Which walls to process
 ANALYSIS_SPACINGS = [1]         # Meters between cross-section slices
-SEGMENT_LENGTH = 10             # Meters per piecewise linear fit segment
+SEGMENT_LENGTH = 10             # Meters — data window for each piecewise slope fit
+SEGMENT_OVERLAP = 0             # Meters — overlap between adjacent segments
+                                # Step = SEGMENT_LENGTH - SEGMENT_OVERLAP
+                                # e.g. length=2, overlap=1 → 1m steps, each fit uses
+                                # 2m of data but the line is drawn over the 1m center
 SLICE_HALF_WIDTH = 1.5          # Meters from wall base Y to include points
                                 # Must exceed wall_height * batter + margin for
                                 # battered walls (e.g. 11m wall at 8% needs > 0.88m)
