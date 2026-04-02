@@ -8,3 +8,9 @@ __pycache__/
 renders/legends/
 
 renders/slopes/
+
+*.ply
+
+*.png
+
+*.csv
