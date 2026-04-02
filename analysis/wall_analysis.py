@@ -287,6 +287,17 @@ def process_slice(args):
         return None
     y_ref = slope * z_min + intercept
 
+    # Expected slope reference line
+    exp_z = np.linspace(z_min, z_max, 100)
+    exp_y = y_ref + EXPECTED_WALL_SLOPE * (exp_z - z_min)
+    exp_x_vals = np.linspace(v1_rotated[0], v2_rotated[0], 100)
+    exp_lines_temp = []
+    for x_val in exp_x_vals[1:]:
+        exp_x = np.ones_like(exp_z) * x_val
+        exp_lines_temp.append(np.column_stack([exp_x, exp_y, exp_z]))
+    exp_line_rotated = np.vstack(exp_lines_temp)
+    exp_line_unrotated = np.dot(exp_line_rotated - v1, inverse_rotation_matrix.T) + v1
+
     # New slope algorithm — measure deviation from expected batter
     top18_ind = np.searchsorted(points_2d[:, 1], z_max - TOP_INCHES_FOR_NEW_SLOPE)
     avg_y = np.mean(points_2d[top18_ind:, 0])
@@ -322,6 +333,9 @@ def process_slice(args):
         'new_slope_color': new_slope_color,
         'new_slope_line': line_unrotated_full,
         'new_slope_line_rotated': line,
+        # Expected slope reference line
+        'expected_slope_line': exp_line_unrotated,
+        'expected_slope_line_rotated': exp_line_rotated,
         # Point cloud slice data
         'pc_slice_rotated': pc_slice,
         'pc_slice_unrotated': pc_slice_unrotated,
@@ -420,6 +434,8 @@ if __name__ == '__main__':
             new_slope_colors = []
             new_slope_lines = []
             new_slope_lines_rotated = []
+            expected_slope_lines = []
+            expected_slope_lines_rotated = []
 
             for r in results:
                 slope_values.append(r['slope'])
@@ -436,6 +452,9 @@ if __name__ == '__main__':
                 new_slope_lines.append(r['new_slope_line'])
                 new_slope_lines_rotated.append(r['new_slope_line_rotated'])
 
+                expected_slope_lines.append(r['expected_slope_line'])
+                expected_slope_lines_rotated.append(r['expected_slope_line_rotated'])
+
                 pc_slices_rotated.append(r['pc_slice_rotated'])
                 pc_slices.append(r['pc_slice_unrotated'])
                 pc_slice_colors.append(r['pc_slice_colors'])
@@ -451,6 +470,7 @@ if __name__ == '__main__':
 
             new_slope_colors = np.vstack(new_slope_colors)
             new_slope_lines_all = np.vstack(new_slope_lines)
+            expected_slope_lines_all = np.vstack(expected_slope_lines)
 
             points_temp = []
             colors_temp = []
@@ -468,11 +488,14 @@ if __name__ == '__main__':
                 ensure_dir("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing))
                 np.savetxt("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing), slope_values, delimiter=",", fmt='%.6f')
                 savePoints(new_slope_lines_all, "pointClouds/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
+                savePoints(expected_slope_lines_all, "pointClouds/expected_slopes/line_%d_%.1f.ply" % (wall_id, spacing))
 
                 savePoints(pc_slices_unrolled, "pointClouds/unrolled/displacements/pc_slices_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors)
                 savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors)
                 new_slope_lines_unrolled = unrollSlices([nsr.copy() for nsr in new_slope_lines_rotated], spacing)
                 savePoints(new_slope_lines_unrolled, "pointClouds/unrolled/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors)
+                expected_slope_lines_unrolled = unrollSlices([esr.copy() for esr in expected_slope_lines_rotated], spacing)
+                savePoints(expected_slope_lines_unrolled, "pointClouds/unrolled/expected_slopes/line_%d_%.1f.ply" % (wall_id, spacing))
             else:
                 savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%3.3f_%.1f.ply" % (wall_id, thresh, spacing), colors=line_colors)
 
