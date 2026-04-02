@@ -50,6 +50,18 @@ DISCRETE_SLOPE_RANGES = [
 ]
 
 # ---------------------------------------------------------------------------
+# Station splits — divide wall renders into sub-images by station range
+# Each entry is (start_station_ft, end_station_ft).
+# Station format: 4+04 = 404 ft, 8+06.5 = 806.5 ft, etc.
+# Set to None or [] to render the full wall as a single image.
+# ---------------------------------------------------------------------------
+STATION_SPLITS = [
+    (0, 404),       # 0+00 to 4+04
+    (404, 806.5),   # 4+04 to 8+06.5
+    (806.5, 1050),  # 8+06.5 to 10+50
+]
+
+# ---------------------------------------------------------------------------
 # Point cloud rendering (rendering/point_cloud.py)
 # ---------------------------------------------------------------------------
 RENDER_DPI = 10

@@ -147,7 +147,7 @@ printf("Processing elevation images with grid overlays")
 
 for file in files:
     wall_id = file.split("\\")[-1][0]
-    img = cv2.imread(file)
+    img = cv2.imread(file, cv2.IMREAD_UNCHANGED)
 
     padx = GRID_PAD_X
     padding = GRID_PADDING
@@ -156,7 +156,8 @@ for file in files:
     delta_x = GRID_DELTA_X
     delta_y = GRID_DELTA_Y
 
-    new_img = np.ones((img.shape[0] + padding[0] + padding[1], img.shape[1] + padding[2] + padding[3], 3), np.uint8) * 255
+    channels = img.shape[2] if len(img.shape) == 3 else 3
+    new_img = np.zeros((img.shape[0] + padding[0] + padding[1], img.shape[1] + padding[2] + padding[3], channels), np.uint8)
     new_img[padding[0]:img.shape[0] + padding[0], padding[2]:img.shape[1] + padding[2]] = img
 
     vertical_texts = []
@@ -164,10 +165,14 @@ for file in files:
 
     printf(f"Drawing grid lines for Wall #{wall_id}")
 
+    has_alpha = channels == 4
+
     for i in range(2, img.shape[1] // delta_x + 3):
         pos_pix = i * delta_x
         pos_ft = i * delta_x * 10 / 305 - 20
-        new_img[:img.shape[0] + 100, i * delta_x - thickness:i * delta_x + thickness] = 0
+        new_img[:img.shape[0] + 100, i * delta_x - thickness:i * delta_x + thickness, :3] = 0
+        if has_alpha:
+            new_img[:img.shape[0] + 100, i * delta_x - thickness:i * delta_x + thickness, 3] = 255
 
         text = "%d+%02d" % (pos_ft // 100, pos_ft % 100)
         vertical_texts.append((text, pos_pix - 75, 1400))
@@ -175,7 +180,9 @@ for file in files:
     for i in range(1, int(img.shape[0] / delta_y) + 1):
         pos_pix = i * delta_y
         pos_ft = i * delta_y * 1 / 610
-        new_img[int(i * delta_y) - thickness:int(i * delta_y) + thickness, padx - 100:] = 0
+        new_img[int(i * delta_y) - thickness:int(i * delta_y) + thickness, padx - 100:, :3] = 0
+        if has_alpha:
+            new_img[int(i * delta_y) - thickness:int(i * delta_y) + thickness, padx - 100:, 3] = 255
 
         text = "%3.2f" % (762.5 - pos_ft)
         horizontal_texts.append((text, 75, int(pos_pix) - 75))
@@ -183,8 +190,10 @@ for file in files:
     # Draw red line at reference elevation
     pos_pix = int((1219 / 2) * (762.5 - GRID_RED_LINE_ELEVATION))
     red_thickness = GRID_RED_LINE_THICKNESS
-    new_img[pos_pix - red_thickness:pos_pix + red_thickness, padx - 100:] = 0
+    new_img[pos_pix - red_thickness:pos_pix + red_thickness, padx - 100:, :3] = 0
     new_img[pos_pix - red_thickness:pos_pix + red_thickness, padx - 100:, 2] = 255
+    if has_alpha:
+        new_img[pos_pix - red_thickness:pos_pix + red_thickness, padx - 100:, 3] = 255
 
     printf(f"Adding all text labels for Wall #{wall_id} in one pass")
     new_img = add_all_text_to_image(
@@ -195,7 +204,7 @@ for file in files:
         color=(0, 0, 0)
     )
 
-    overlay_img = cv2.imread("renders/elevations/curves/%s_elevation.png" % wall_id)
+    overlay_img = cv2.imread("renders/elevations/curves/%s_elevation.png" % wall_id, cv2.IMREAD_UNCHANGED)
     result_image = overlay_images_white_mask(new_img, overlay_img, padx, 0)
     ensure_dir("renders/overlays/elevations/%s.png" % wall_id)
     cv2.imwrite("renders/overlays/elevations/%s.png" % wall_id, result_image)

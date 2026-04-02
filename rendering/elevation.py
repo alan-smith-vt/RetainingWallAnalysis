@@ -20,7 +20,12 @@ from tqdm import tqdm
 from config import (
     RENDER_DPI, RENDER_RESOLUTION, REFERENCE_ELEVATION_M,
     ELEVATION_WINDOW_M, VERTICAL_EXAGGERATION, ELEVATION_MARKER_SIZE,
+    FEET_TO_METERS,
 )
+try:
+    from config import STATION_SPLITS
+except ImportError:
+    STATION_SPLITS = None
 
 print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
@@ -64,14 +69,16 @@ def projectToImage1000_color(points, xyExtents, colors, x_axis, y_axis, z_axis, 
     ax2.set_ylim((0, s[1]))
     ax2.scatter(points[:, x_axis] * 100, points[:, y_axis] * 100, c=colors, marker=',', lw=0, s=(sz / fig.dpi) ** 2)
     ax2.axis('off')
+    fig.patch.set_facecolor('none')
+    ax2.set_facecolor('none')
     fig.tight_layout()
 
     buf = BytesIO()
-    fig.savefig(buf, dpi=fig.dpi)
+    fig.savefig(buf, dpi=fig.dpi, transparent=True, format='png')
     buf.seek(0)
 
     image_data = np.frombuffer(buf.read(), dtype=np.uint8)
-    img = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
+    img = cv2.imdecode(image_data, cv2.IMREAD_UNCHANGED)
     res = (img[5:-5, 5:-5])
 
     plt.close()
@@ -134,7 +141,25 @@ for i in tqdm(range(len(files))):
     extents = np.max(points_og_zeroed, axis=0)
     extents[2] = delta_z * 2 * scale
 
-    res = projectToImage1000_color(points, extents, colors, x_axis, y_axis, z_axis, sz=sz)
-
-    ensure_dir('%s%s_elevation.png' % (saveLoc, name))
-    cv2.imwrite('%s%s_elevation.png' % (saveLoc, name), res)
+    if STATION_SPLITS:
+        x_min_og = np.min(points_og[:, x_axis])
+        for start_ft, end_ft in STATION_SPLITS:
+            start_m = start_ft * FEET_TO_METERS + x_min_og - og_offset[x_axis]
+            end_m = end_ft * FEET_TO_METERS + x_min_og - og_offset[x_axis]
+            mask = (points[:, x_axis] >= start_m) & (points[:, x_axis] < end_m)
+            sub_points = points[mask]
+            sub_colors = colors[mask]
+            if len(sub_points) == 0:
+                continue
+            sub_points = sub_points.copy()
+            sub_points[:, x_axis] -= start_m
+            sub_extents = extents.copy()
+            sub_extents[x_axis] = end_m - start_m
+            station_label = "%d+%02d_to_%d+%02d" % (start_ft // 100, start_ft % 100, end_ft // 100, end_ft % 100)
+            res = projectToImage1000_color(sub_points, sub_extents, sub_colors, x_axis, y_axis, z_axis, sz=sz)
+            ensure_dir('%s%s_%s_elevation.png' % (saveLoc, name, station_label))
+            cv2.imwrite('%s%s_%s_elevation.png' % (saveLoc, name, station_label), res)
+    else:
+        res = projectToImage1000_color(points, extents, colors, x_axis, y_axis, z_axis, sz=sz)
+        ensure_dir('%s%s_elevation.png' % (saveLoc, name))
+        cv2.imwrite('%s%s_elevation.png' % (saveLoc, name), res)

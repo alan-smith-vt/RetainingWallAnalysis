@@ -86,7 +86,7 @@ def create_displacement_colorbar(save_path=None):
 
     if save_path:
         ensure_dir(save_path)
-        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        fig.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
         print(f"Saved: {save_path}")
     else:
         plt.show()
@@ -146,7 +146,7 @@ def create_slope_colorbar(save_path=None):
 
     if save_path:
         ensure_dir(save_path)
-        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        fig.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
         print(f"Saved: {save_path}")
     else:
         plt.show()
@@ -201,7 +201,7 @@ def create_new_slope_colorbar(save_path=None):
 
     if save_path:
         ensure_dir(save_path)
-        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        fig.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
         print(f"Saved: {save_path}")
     else:
         plt.show()
@@ -232,7 +232,7 @@ def create_all_colorbars(save_dir="renders/legends/"):
         create_fn(axes[ax_idx])
 
     plt.tight_layout(h_pad=3.0)
-    fig.savefig(combined_path, dpi=150, bbox_inches='tight')
+    fig.savefig(combined_path, dpi=150, bbox_inches='tight', transparent=True)
     print(f"Saved combined: {combined_path}")
     plt.close(fig)
 

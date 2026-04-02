@@ -19,18 +19,19 @@ def ensure_dir(filepath):
 imgs = []
 for wall_id in [1, 2, 3]:
     file = "renders/overlays/elevations/%d.png" % wall_id
-    img = cv2.imread(file)
+    img = cv2.imread(file, cv2.IMREAD_UNCHANGED)
     imgs.append(img)
 
 # Find max width
 max_width = max(img.shape[1] for img in imgs)
 
-# Pad images to max width with white
+# Pad images to max width with transparent pixels
 padded_imgs = []
 for img in imgs:
     if img.shape[1] < max_width:
         pad = max_width - img.shape[1]
-        img = cv2.copyMakeBorder(img, 0, 0, 0, pad, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+        pad_value = (0, 0, 0, 0) if img.shape[2] == 4 else (0, 0, 0)
+        img = cv2.copyMakeBorder(img, 0, 0, 0, pad, cv2.BORDER_CONSTANT, value=pad_value)
     padded_imgs.append(img)
 
 # Stack and save
