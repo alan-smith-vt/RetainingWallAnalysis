@@ -28,6 +28,10 @@ SEGMENT_OVERLAP = 0             # Meters — overlap between adjacent segments
                                 # Step = SEGMENT_LENGTH - SEGMENT_OVERLAP
                                 # e.g. length=2, overlap=1 → 1m steps, each fit uses
                                 # 2m of data but the line is drawn over the 1m center
+SLICE_OVERLAP = 0               # Meters — horizontal overlap between adjacent slices
+                                # Step = ANALYSIS_SPACING - SLICE_OVERLAP
+                                # e.g. spacing=1, overlap=0.8 → 0.2m steps, each fit
+                                # uses 1m of data but output covers the 0.2m step
 SLICE_HALF_WIDTH = 1.5          # Meters from wall base Y to include points
                                 # Must exceed wall_height * batter + margin for
                                 # battered walls (e.g. 11m wall at 8% needs > 0.88m)

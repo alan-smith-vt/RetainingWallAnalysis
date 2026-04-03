@@ -38,6 +38,10 @@ from config import (
     TOP_INCHES_FOR_NEW_SLOPE, DISCRETE_SLOPE_RANGES,
     NUM_WORKERS,
 )
+try:
+    from config import SLICE_OVERLAP
+except ImportError:
+    SLICE_OVERLAP = 0
 
 
 def printf(msg):
@@ -263,58 +267,65 @@ def process_slice(args):
 
     z_max = np.max(pc_slice[:, 2]) + TOP_OF_WALL_OFFSET
 
-    # Piecewise slope fitting with overlap
-    # step = how far apart segment centers are; segLength = data window for fitting
-    # The line is drawn only over the step region (center portion), but the
-    # slope is fit using the full segLength of data around that center.
-    step = max(segLength - SEGMENT_OVERLAP, 0.1)
+    # Horizontal sub-steps for slope analysis (SLICE_OVERLAP)
+    slice_width = x_max - x_min
+    h_step = max(slice_width - SLICE_OVERLAP, 0.01)
+    n_h_steps = max(int(slice_width / h_step), 1)
+
+    # Piecewise slope fitting with vertical and horizontal overlap
+    v_step = max(segLength - SEGMENT_OVERLAP, 0.1)
     wall_height = z_max - z_min
-    numSlopes = max(int(wall_height / step), 1)
+    numSlopes = max(int(wall_height / v_step), 1)
 
     piecewise_lines_unrotated = []
     piecewise_line_colors = []
     piecewise_lines_rotated = []
     piecewise_line_scalars = []
-    for j in range(numSlopes):
-        # Center of this segment's drawn region
-        draw_z1 = z_min + j * step
-        draw_z2 = min(draw_z1 + step, z_max)
+    for h in range(n_h_steps):
+        # Horizontal sub-step: draw region
+        draw_x1 = x_min + h * h_step
+        draw_x2 = min(draw_x1 + h_step, x_max)
 
-        # Expanded data window for fitting (extends overlap/2 above and below)
-        fit_z1 = max(draw_z1 - SEGMENT_OVERLAP / 2, z_min)
-        fit_z2 = min(draw_z2 + SEGMENT_OVERLAP / 2, z_max)
+        # Fit using all points in the full slice width (analysis_window)
+        for j in range(numSlopes):
+            # Vertical: draw region
+            draw_z1 = z_min + j * v_step
+            draw_z2 = min(draw_z1 + v_step, z_max)
 
-        slope_val, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, fit_z1, fit_z2, v1_rotated[0], v2_rotated[0], thresh)
-        if slope_val is None:
-            continue
+            # Expanded vertical data window for fitting
+            fit_z1 = max(draw_z1 - SEGMENT_OVERLAP / 2, z_min)
+            fit_z2 = min(draw_z2 + SEGMENT_OVERLAP / 2, z_max)
 
-        # Re-generate the line geometry over the draw region only
-        # Use fixed density: ~50 points/meter vertically, ~100 lines/meter horizontally
-        draw_height = draw_z2 - draw_z1
-        draw_width = abs(v2_rotated[0] - v1_rotated[0])
-        n_z = max(int(50 * draw_height), 2)
-        n_x = max(int(100 * draw_width), 2)
-        z_draw = np.linspace(draw_z1, draw_z2, n_z)
-        y_draw = slope_val * z_draw + intercept
-        x_vals = np.linspace(v1_rotated[0], v2_rotated[0], n_x)
-        draw_lines = []
-        draw_colors = []
-        slope_color = value_to_rgb(slope_val, thresh)
-        for x_val in x_vals[1:]:
-            x = np.ones_like(z_draw) * x_val
-            seg = np.column_stack([x, y_draw, z_draw])
-            draw_lines.append(seg)
-            draw_colors.append(np.tile(slope_color, (seg.shape[0], 1)))
+            slope_val, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, fit_z1, fit_z2, draw_x1, draw_x2, thresh)
+            if slope_val is None:
+                continue
 
-        line_seg = np.vstack(draw_lines)
-        line_seg_colors = np.vstack(draw_colors)
-        line_seg_scalars = np.full(len(line_seg), slope_val, dtype=np.float32)
+            # Generate line geometry over the draw region only
+            draw_height = draw_z2 - draw_z1
+            draw_width = abs(draw_x2 - draw_x1)
+            n_z = max(int(15 * draw_height), 2)
+            n_x = max(int(30 * draw_width), 2)
+            z_draw = np.linspace(draw_z1, draw_z2, n_z)
+            y_draw = slope_val * z_draw + intercept
+            x_vals = np.linspace(draw_x1, draw_x2, n_x)
+            draw_lines = []
+            draw_colors = []
+            slope_color = value_to_rgb(slope_val, thresh)
+            for x_val in x_vals[1:]:
+                x = np.ones_like(z_draw) * x_val
+                seg = np.column_stack([x, y_draw, z_draw])
+                draw_lines.append(seg)
+                draw_colors.append(np.tile(slope_color, (seg.shape[0], 1)))
 
-        line_unrotated = np.dot(line_seg - v1, inverse_rotation_matrix.T) + v1
-        piecewise_lines_unrotated.append(line_unrotated)
-        piecewise_line_colors.append(line_seg_colors)
-        piecewise_lines_rotated.append(line_seg)
-        piecewise_line_scalars.append(line_seg_scalars)
+            line_seg = np.vstack(draw_lines)
+            line_seg_colors = np.vstack(draw_colors)
+            line_seg_scalars = np.full(len(line_seg), slope_val, dtype=np.float32)
+
+            line_unrotated = np.dot(line_seg - v1, inverse_rotation_matrix.T) + v1
+            piecewise_lines_unrotated.append(line_unrotated)
+            piecewise_line_colors.append(line_seg_colors)
+            piecewise_lines_rotated.append(line_seg)
+            piecewise_line_scalars.append(line_seg_scalars)
 
     if len(piecewise_lines_rotated) == 0:
         lines_rotated_combined = None
