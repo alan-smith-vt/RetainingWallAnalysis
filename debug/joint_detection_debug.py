@@ -254,106 +254,53 @@ def fit_tracks(tracks):
 INFLUENCE_HALF_Z = 8 * FEET_TO_METERS / 12  # ±8 inches in meters
 
 
-# Shared memory arrays set by _init_worker
-_shared_px = None
-_shared_pz = None
-
-
-def _init_worker(px_shm_name, pz_shm_name, shape, dtype):
-    """Attach to shared memory in each worker."""
-    global _shared_px, _shared_pz
-    from multiprocessing.shared_memory import SharedMemory
-    px_shm = SharedMemory(name=px_shm_name)
-    pz_shm = SharedMemory(name=pz_shm_name)
-    _shared_px = np.ndarray(shape, dtype=dtype, buffer=px_shm.buf)
-    _shared_pz = np.ndarray(shape, dtype=dtype, buffer=pz_shm.buf)
-
-
-def _process_track(args):
-    """Worker: evaluate one track against shared point arrays."""
-    i, track = args
-    px, pz = _shared_px, _shared_pz
-
-    z_margin = INFLUENCE_HALF_Z + np.ptp(track['z'])
-    candidates = ((px >= track['x_min']) & (px <= track['x_max']) &
-                   (pz >= track['mean_z'] - z_margin) &
-                   (pz <= track['mean_z'] + z_margin))
-    if not np.any(candidates):
-        return None
-
-    cand_idx = np.where(candidates)[0]
-    x_range = track['x_max'] - track['x_min']
-
-    if track['tck'] is not None and x_range > 0:
-        tck = track['tck']
-        u_pts = np.clip((px[cand_idx] - track['x_min']) / x_range, 0, 1)
-        x_eval, z_eval = splev(u_pts, tck)
-        dx_du, dz_du = splev(u_pts, tck, der=1)
-
-        with np.errstate(divide='ignore', invalid='ignore'):
-            dzdx = np.where(np.abs(dx_du) > 1e-10, dz_du / dx_du, 0.0)
-
-        _, z_start = splev(0.0, tck)
-        disp = z_eval - z_start
-    else:
-        z_eval = np.full(len(cand_idx), track['mean_z'])
-        dzdx = np.zeros(len(cand_idx))
-        disp = np.zeros(len(cand_idx))
-
-    z_dist = np.abs(pz[cand_idx] - z_eval)
-    in_zone = z_dist <= INFLUENCE_HALF_Z
-
-    return (i, cand_idx[in_zone], z_dist[in_zone],
-            dzdx[in_zone], disp[in_zone])
-
-
 def assign_points_to_tracks(points, fitted_tracks):
-    """Assign points to tracks, parallelized via shared memory.
+    """Assign each point to its nearest track within ±8in influence zone.
 
     Returns:
         track_idx: (N,) int array, -1 if unassigned
         spline_dzdx: (N,) float array
         displacement: (N,) float array
     """
-    from multiprocessing import Pool, cpu_count
-    from multiprocessing.shared_memory import SharedMemory
-
     N = len(points)
-    px = np.ascontiguousarray(points[:, 0], dtype=np.float64)
-    pz = np.ascontiguousarray(points[:, 2], dtype=np.float64)
+    px, pz = points[:, 0], points[:, 2]
 
-    # Create shared memory
-    px_shm = SharedMemory(create=True, size=px.nbytes)
-    pz_shm = SharedMemory(create=True, size=pz.nbytes)
-    np.ndarray(px.shape, dtype=px.dtype, buffer=px_shm.buf)[:] = px
-    np.ndarray(pz.shape, dtype=pz.dtype, buffer=pz_shm.buf)[:] = pz
-
-    args = [(i, track) for i, track in enumerate(fitted_tracks)]
-    n_workers = min(cpu_count(), len(fitted_tracks))
-    print(f"  Using {n_workers} workers for {len(fitted_tracks)} tracks")
-
-    results = []
-    with Pool(n_workers, initializer=_init_worker,
-              initargs=(px_shm.name, pz_shm.name, px.shape, px.dtype)) as pool:
-        for r in tqdm(pool.imap_unordered(_process_track, args),
-                      total=len(args), desc="  Assigning points"):
-            if r is not None:
-                results.append(r)
-
-    # Clean up shared memory
-    px_shm.close()
-    px_shm.unlink()
-    pz_shm.close()
-    pz_shm.unlink()
-
-    # Merge: closest track wins
     track_idx = np.full(N, -1, dtype=int)
     best_dist = np.full(N, np.inf)
     spline_dzdx = np.full(N, np.nan)
     displacement = np.full(N, np.nan)
 
-    for (i, cand_idx, z_dist, dzdx, disp) in results:
-        update = z_dist < best_dist[cand_idx]
+    for i, track in enumerate(tqdm(fitted_tracks, desc="  Assigning points")):
+        z_margin = INFLUENCE_HALF_Z + np.ptp(track['z'])
+        candidates = ((px >= track['x_min']) & (px <= track['x_max']) &
+                       (pz >= track['mean_z'] - z_margin) &
+                       (pz <= track['mean_z'] + z_margin))
+        if not np.any(candidates):
+            continue
+
+        cand_idx = np.where(candidates)[0]
+        x_range = track['x_max'] - track['x_min']
+
+        if track['tck'] is not None and x_range > 0:
+            tck = track['tck']
+            u_pts = np.clip((px[cand_idx] - track['x_min']) / x_range, 0, 1)
+            x_eval, z_eval = splev(u_pts, tck)
+            dx_du, dz_du = splev(u_pts, tck, der=1)
+
+            with np.errstate(divide='ignore', invalid='ignore'):
+                dzdx = np.where(np.abs(dx_du) > 1e-10, dz_du / dx_du, 0.0)
+
+            _, z_start = splev(0.0, tck)
+            disp = z_eval - z_start
+        else:
+            z_eval = np.full(len(cand_idx), track['mean_z'])
+            dzdx = np.zeros(len(cand_idx))
+            disp = np.zeros(len(cand_idx))
+
+        z_dist = np.abs(pz[cand_idx] - z_eval)
+        in_zone = z_dist <= INFLUENCE_HALF_Z
+        update = in_zone & (z_dist < best_dist[cand_idx])
+
         upd_idx = cand_idx[update]
         best_dist[upd_idx] = z_dist[update]
         track_idx[upd_idx] = i
