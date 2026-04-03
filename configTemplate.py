@@ -43,7 +43,11 @@ MAX_DISPLACEMENT_NEGATIVE = None   # Meters — max forward displacement, red en
                                    #   0.1m backward (blue) ← green (on profile) → 0.5m forward (red)
 EXPECTED_WALL_SLOPE = 0.04      # Expected batter as Y/Z ratio (0 = vertical, 0.04 = 4%)
 SLOPE_THRESHOLD = None          # Percent slope threshold (None = use jet colormap)
-SLOPE_COLORMAP_RANGE = 3.5      # Maps 0 to -3.5% slope onto 0–1 for jet colormap
+SLOPE_COLORMAP_RANGE = 3.5      # Symmetric fallback if positive/negative not set (%)
+SLOPE_RANGE_POSITIVE = None     # % — max steeper-than-expected deviation, blue end (None = use symmetric)
+SLOPE_RANGE_NEGATIVE = None     # % — max shallower-than-expected deviation, red end (None = use symmetric)
+                                # e.g. POSITIVE=2.0, NEGATIVE=5.0 →
+                                #   +2% steeper (blue) ← green (on design) → -5% shallower (red)
 TOP_INCHES_FOR_NEW_SLOPE = 0.45 # Meters below z_max for averaging (≈18 inches)
 
 # Discrete slope color ranges (percent value -> hex color)

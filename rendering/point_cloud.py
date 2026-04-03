@@ -29,6 +29,11 @@ except ImportError:
     MAX_DISPLACEMENT_POSITIVE = None
     MAX_DISPLACEMENT_NEGATIVE = None
 try:
+    from config import SLOPE_RANGE_POSITIVE, SLOPE_RANGE_NEGATIVE
+except ImportError:
+    SLOPE_RANGE_POSITIVE = None
+    SLOPE_RANGE_NEGATIVE = None
+try:
     from config import STATION_SPLITS
 except ImportError:
     STATION_SPLITS = None
@@ -137,10 +142,20 @@ def read_ply_scalar(filepath):
 
 
 def scalar_to_colors_slope(scalars):
-    """Map slope scalar values to colors using config colormap params."""
+    """Map slope scalar values to colors using config colormap params.
+    Supports asymmetric ranges via SLOPE_RANGE_POSITIVE/NEGATIVE.
+    Positive deviation (steeper) = more batter = blue (0).
+    Negative deviation (shallower) = less batter = red (1)."""
     cmap = plt.cm.jet
-    deviation = scalars - EXPECTED_WALL_SLOPE
-    mapped = np.clip((-deviation * 100) / SLOPE_COLORMAP_RANGE * 0.5 + 0.5, 0, 1)
+    deviation = (scalars - EXPECTED_WALL_SLOPE) * 100  # percent
+    range_pos = SLOPE_RANGE_POSITIVE if SLOPE_RANGE_POSITIVE is not None else SLOPE_COLORMAP_RANGE
+    range_neg = SLOPE_RANGE_NEGATIVE if SLOPE_RANGE_NEGATIVE is not None else SLOPE_COLORMAP_RANGE
+    # Map: +range_pos → 0 (blue), 0 → 0.5 (green), -range_neg → 1 (red)
+    mapped = np.where(
+        deviation >= 0,
+        0.5 - 0.5 * np.clip(deviation / range_pos, 0, 1),
+        0.5 + 0.5 * np.clip(-deviation / range_neg, 0, 1),
+    )
     return cmap(mapped)[:, :3]
 
 
@@ -162,9 +177,18 @@ def scalar_to_colors_displacement(scalars):
 
 
 def scalar_to_colors_deviation(scalars):
-    """Map slope deviation scalar values to colors (already deviation from expected)."""
+    """Map slope deviation scalar values to colors (already deviation from expected).
+    Supports asymmetric ranges via SLOPE_RANGE_POSITIVE/NEGATIVE."""
     cmap = plt.cm.jet
-    mapped = np.clip((-scalars * 100) / SLOPE_COLORMAP_RANGE * 0.5 + 0.5, 0, 1)
+    deviation = scalars * 100  # already deviation, convert to percent
+    range_pos = SLOPE_RANGE_POSITIVE if SLOPE_RANGE_POSITIVE is not None else SLOPE_COLORMAP_RANGE
+    range_neg = SLOPE_RANGE_NEGATIVE if SLOPE_RANGE_NEGATIVE is not None else SLOPE_COLORMAP_RANGE
+    # Map: +range_pos → 0 (blue), 0 → 0.5 (green), -range_neg → 1 (red)
+    mapped = np.where(
+        deviation >= 0,
+        0.5 - 0.5 * np.clip(deviation / range_pos, 0, 1),
+        0.5 + 0.5 * np.clip(-deviation / range_neg, 0, 1),
+    )
     return cmap(mapped)[:, :3]
 
 

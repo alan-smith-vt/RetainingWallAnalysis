@@ -16,7 +16,6 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import numpy as np
 from config import (
     MAX_DISPLACEMENT_FOR_COLORS, EXPECTED_WALL_SLOPE,
@@ -27,6 +26,11 @@ try:
 except ImportError:
     MAX_DISPLACEMENT_POSITIVE = None
     MAX_DISPLACEMENT_NEGATIVE = None
+try:
+    from config import SLOPE_RANGE_POSITIVE, SLOPE_RANGE_NEGATIVE
+except ImportError:
+    SLOPE_RANGE_POSITIVE = None
+    SLOPE_RANGE_NEGATIVE = None
 
 
 def ensure_dir(filepath):
@@ -55,6 +59,27 @@ def _displacement_gradient(ax, max_pos_in, max_neg_in):
               extent=[max_pos_in, -max_neg_in, 0, 1])
     ax.set_yticks([])
     ax.set_xlim(max_pos_in, -max_neg_in)
+
+
+def _slope_gradient(ax, range_pos, range_neg):
+    """Render an asymmetric jet gradient for slope onto *ax*.
+
+    x-axis runs from +range_pos (blue, left) to -range_neg (red, right),
+    representing deviation from expected slope in percent.
+    Zero (on design) is positioned proportionally.
+    """
+    n = 512
+    values = np.linspace(range_pos, -range_neg, n)
+    mapped = np.where(
+        values >= 0,
+        0.5 - (values / range_pos) * 0.5,
+        0.5 + (-values / range_neg) * 0.5,
+    )
+    colors = plt.cm.jet(mapped)
+    ax.imshow(colors.reshape(1, -1, 4), aspect='auto',
+              extent=[range_pos, -range_neg, 0, 1])
+    ax.set_yticks([])
+    ax.set_xlim(range_pos, -range_neg)
 
 
 def _staggered_ticks(ax, ticks, labels, fontsize=14, min_gap_pts=80,
@@ -133,7 +158,6 @@ def create_slope_colorbar(save_path=None):
     """Standalone slope colorbar — same style as combined legend."""
     fig, ax = plt.subplots(figsize=(10, 3))
     _draw_slope_bar(ax)
-    plt.tight_layout()
     _save_or_show(fig, save_path)
 
 
@@ -141,7 +165,6 @@ def create_new_slope_colorbar(save_path=None):
     """Standalone new slope colorbar — same style as combined legend."""
     fig, ax = plt.subplots(figsize=(10, 3))
     _draw_new_slope_bar(ax)
-    plt.tight_layout()
     _save_or_show(fig, save_path)
 
 
@@ -219,65 +242,95 @@ def _draw_displacement_bar(ax):
 
 
 def _draw_slope_bar(ax):
-    """Draw slope colorbar onto an existing axes."""
+    """Draw asymmetric slope colorbar onto an existing axes."""
     expected_pct = EXPECTED_WALL_SLOPE * 100
-    r = SLOPE_COLORMAP_RANGE
+    range_pos = SLOPE_RANGE_POSITIVE if SLOPE_RANGE_POSITIVE is not None else SLOPE_COLORMAP_RANGE
+    range_neg = SLOPE_RANGE_NEGATIVE if SLOPE_RANGE_NEGATIVE is not None else SLOPE_COLORMAP_RANGE
 
-    norm = mcolors.Normalize(vmin=0, vmax=1)
-    sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
-    sm.set_array([])
-    cbar = plt.colorbar(sm, cax=ax, orientation='horizontal')
+    _slope_gradient(ax, range_pos, range_neg)
 
-    ticks = [0, 0.25, 0.5, 0.75, 1.0]
+    # Ticks in deviation space, labels show actual slope %
+    ticks = [range_pos, range_pos / 2, 0, -range_neg / 2, -range_neg]
     labels = [
-        f"{expected_pct+r:.1f}%",
-        f"{expected_pct+r/2:.1f}%",
+        f"{expected_pct + range_pos:.1f}%",
+        f"{expected_pct + range_pos / 2:.1f}%",
         f"{expected_pct:.1f}%",
-        f"{expected_pct-r/2:.1f}%",
-        f"{expected_pct-r:.1f}%",
+        f"{expected_pct - range_neg / 2:.1f}%",
+        f"{expected_pct - range_neg:.1f}%",
     ]
-    cbar.set_ticks(ticks)
-    cbar.set_ticklabels(labels)
-    ax.tick_params(axis='x', labelsize=18)
-    ax.annotate('More batter', xy=(0.05, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=21, color='blue', fontweight='bold')
-    ax.annotate('On design', xy=(0.5, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=21, color='green', fontweight='bold')
-    ax.annotate('Less batter', xy=(0.95, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=21, color='red', fontweight='bold')
-    ax.set_xlabel(f"Slope (expected: {expected_pct:.1f}%, range: \u00b1{r:.1f}%)",
-                  fontsize=22, fontweight='bold', labelpad=15)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([])
+    for i, (t, label) in enumerate(zip(ticks, labels)):
+        is_low = (i % 2 == 1)
+        tick_len = 14 if is_low else 8
+        label_y = -tick_len - 14
+        ax.annotate('', xy=(t, 0), xytext=(t, -tick_len),
+                    xycoords=('data', 'axes points'),
+                    textcoords=('data', 'axes points'),
+                    arrowprops=dict(arrowstyle='-', color='k', lw=1))
+        ax.annotate(label, xy=(t, label_y),
+                    xycoords=('data', 'axes points'),
+                    ha='center', va='top', fontsize=18)
+    ax.tick_params(axis='x', length=0)
+    zero_frac = range_pos / (range_pos + range_neg)
+    positions = [(0.05, 'More batter', 'blue'),
+                 (zero_frac, 'On design', 'green'),
+                 (0.95, 'Less batter', 'red')]
+    for i, (x, text, color) in enumerate(positions):
+        y = 1.1
+        for j in range(i):
+            if abs(x - positions[j][0]) < 0.18:
+                y += 0.20
+        ax.annotate(text, xy=(x, y), xycoords='axes fraction',
+                    ha='center', fontsize=21, color=color, fontweight='bold')
+    ax.set_xlabel(f"Slope (expected: {expected_pct:.1f}%)",
+                  fontsize=22, fontweight='bold', labelpad=55)
 
 
 def _draw_new_slope_bar(ax):
-    """Draw new slope deviation colorbar onto an existing axes."""
+    """Draw asymmetric slope deviation colorbar onto an existing axes."""
     expected_pct = EXPECTED_WALL_SLOPE * 100
-    r = SLOPE_COLORMAP_RANGE
+    range_pos = SLOPE_RANGE_POSITIVE if SLOPE_RANGE_POSITIVE is not None else SLOPE_COLORMAP_RANGE
+    range_neg = SLOPE_RANGE_NEGATIVE if SLOPE_RANGE_NEGATIVE is not None else SLOPE_COLORMAP_RANGE
 
-    norm = mcolors.Normalize(vmin=0, vmax=1)
-    sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
-    sm.set_array([])
-    cbar = plt.colorbar(sm, cax=ax, orientation='horizontal')
+    _slope_gradient(ax, range_pos, range_neg)
 
-    ticks = [0, 0.25, 0.5, 0.75, 1.0]
+    # Ticks in deviation space
+    ticks = [range_pos, range_pos / 2, 0, -range_neg / 2, -range_neg]
     labels = [
-        f"+{r:.1f}% dev",
-        f"+{r/2:.1f}%",
+        f"+{range_pos:.1f}%",
+        f"+{range_pos / 2:.1f}%",
         "0%",
-        f"-{r/2:.1f}%",
-        f"-{r:.1f}% dev",
+        f"-{range_neg / 2:.1f}%",
+        f"-{range_neg:.1f}%",
     ]
-    cbar.set_ticks(ticks)
-    cbar.set_ticklabels(labels)
-    ax.tick_params(axis='x', labelsize=18)
-    ax.annotate('Top further back', xy=(0.05, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=21, color='blue', fontweight='bold')
-    ax.annotate('On design', xy=(0.5, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=21, color='green', fontweight='bold')
-    ax.annotate('Top further forward', xy=(0.95, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=21, color='red', fontweight='bold')
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([])
+    for i, (t, label) in enumerate(zip(ticks, labels)):
+        is_low = (i % 2 == 1)
+        tick_len = 14 if is_low else 8
+        label_y = -tick_len - 14
+        ax.annotate('', xy=(t, 0), xytext=(t, -tick_len),
+                    xycoords=('data', 'axes points'),
+                    textcoords=('data', 'axes points'),
+                    arrowprops=dict(arrowstyle='-', color='k', lw=1))
+        ax.annotate(label, xy=(t, label_y),
+                    xycoords=('data', 'axes points'),
+                    ha='center', va='top', fontsize=18)
+    ax.tick_params(axis='x', length=0)
+    zero_frac = range_pos / (range_pos + range_neg)
+    positions = [(0.05, 'Top further back', 'blue'),
+                 (zero_frac, 'On design', 'green'),
+                 (0.95, 'Top further forward', 'red')]
+    for i, (x, text, color) in enumerate(positions):
+        y = 1.1
+        for j in range(i):
+            if abs(x - positions[j][0]) < 0.18:
+                y += 0.20
+        ax.annotate(text, xy=(x, y), xycoords='axes fraction',
+                    ha='center', fontsize=21, color=color, fontweight='bold')
     ax.set_xlabel(f"Top-of-Wall Deviation from Expected ({expected_pct:.1f}%)",
-                  fontsize=22, fontweight='bold', labelpad=15)
+                  fontsize=22, fontweight='bold', labelpad=55)
 
 
 if __name__ == "__main__":
