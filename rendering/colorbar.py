@@ -211,8 +211,8 @@ def _draw_displacement_bar(ax):
     for i, (x, text, color) in enumerate(positions):
         y = 1.1
         for j in range(i):
-            if abs(x - positions[j][0]) < 0.18:
-                y += 0.25
+            if abs(x - positions[j][0]) < 0.25:
+                y += 0.45
         ax.annotate(text, xy=(x, y), xycoords='axes fraction',
                     ha='center', fontsize=21, color=color, fontweight='bold')
     ax.set_xlabel(f"Displacement from Expected Profile (batter: {expected_pct:.1f}%)",
