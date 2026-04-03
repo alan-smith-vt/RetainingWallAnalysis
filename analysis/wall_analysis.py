@@ -46,14 +46,53 @@ def printf(msg):
 
 def savePoints(points, filePath, colors=None, scalars=None):
     ensure_dir(filePath)
-    pcd = o3d.t.geometry.PointCloud()
-    pcd.point.positions = points
-    if colors is not None:
-        pcd.point.colors = colors
-    if scalars is not None:
-        for name, values in scalars.items():
-            pcd.point[name] = np.asarray(values, dtype=np.float32).reshape(-1, 1)
-    o3d.t.io.write_point_cloud(filePath, pcd)
+    if scalars:
+        _write_ply_with_scalars(points, filePath, colors, scalars)
+    else:
+        pcd = o3d.t.geometry.PointCloud()
+        pcd.point.positions = points
+        if colors is not None:
+            pcd.point.colors = colors
+        o3d.t.io.write_point_cloud(filePath, pcd)
+
+
+def _write_ply_with_scalars(points, filePath, colors, scalars):
+    """Write PLY with scalar fields as standard properties CloudCompare can read."""
+    points = np.asarray(points, dtype=np.float32)
+    n = len(points)
+
+    header = "ply\nformat binary_little_endian 1.0\n"
+    header += "element vertex %d\n" % n
+    header += "property float x\nproperty float y\nproperty float z\n"
+
+    has_colors = colors is not None
+    if has_colors:
+        colors = np.asarray(colors)
+        # Convert 0-1 float colors to 0-255 uint8 if needed
+        if colors.dtype in (np.float32, np.float64):
+            if colors.max() <= 1.0:
+                colors = (colors * 255).clip(0, 255).astype(np.uint8)
+            else:
+                colors = colors.clip(0, 255).astype(np.uint8)
+        header += "property uchar red\nproperty uchar green\nproperty uchar blue\n"
+
+    scalar_names = list(scalars.keys())
+    scalar_arrays = []
+    for name in scalar_names:
+        arr = np.asarray(scalars[name], dtype=np.float32).ravel()
+        scalar_arrays.append(arr)
+        header += "property float %s\n" % name
+
+    header += "end_header\n"
+
+    with open(filePath, 'wb') as f:
+        f.write(header.encode('ascii'))
+        for i in range(n):
+            f.write(points[i].tobytes())
+            if has_colors:
+                f.write(colors[i].tobytes())
+            for arr in scalar_arrays:
+                f.write(arr[i:i+1].tobytes())
 
 
 def getCrossSection(slicePoints, linePoints, filePath, k, slopeColor):
