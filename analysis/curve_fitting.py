@@ -135,7 +135,7 @@ def sortAndSlice(npPoints, window_thickness, step_size, axis):
 
 # ── Main execution ──────────────────────────────────────────────────────────
 
-files = glob.glob("outputs/point_clouds/unrolled/displacement_*0.1.ply")
+files = glob.glob("outputs/point_clouds/unrolled/displacement_*.ply")
 for file in files:
     # Extract wall_id from filename like displacement_1_0.1.ply
     wall_id = os.path.basename(file).split("_")[1]
