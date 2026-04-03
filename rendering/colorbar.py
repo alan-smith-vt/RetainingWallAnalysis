@@ -214,7 +214,7 @@ def _draw_displacement_bar(ax):
             if abs(x - positions[j][0]) < 0.18:
                 y += 0.25
         ax.annotate(text, xy=(x, y), xycoords='axes fraction',
-                    ha='center', fontsize=14, color=color, fontweight='bold')
+                    ha='center', fontsize=21, color=color, fontweight='bold')
     ax.set_xlabel(f"Displacement from Expected Profile (batter: {expected_pct:.1f}%)",
                   fontsize=22, fontweight='bold', labelpad=55)
 
@@ -241,11 +241,11 @@ def _draw_slope_bar(ax):
     cbar.set_ticklabels(labels)
     ax.tick_params(axis='x', labelsize=18)
     ax.annotate('More batter', xy=(0.05, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=14, color='blue', fontweight='bold')
+                ha='center', fontsize=21, color='blue', fontweight='bold')
     ax.annotate('On design', xy=(0.5, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=14, color='green', fontweight='bold')
+                ha='center', fontsize=21, color='green', fontweight='bold')
     ax.annotate('Less batter', xy=(0.95, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=14, color='red', fontweight='bold')
+                ha='center', fontsize=21, color='red', fontweight='bold')
     ax.set_xlabel(f"Piecewise Slope (expected: {expected_pct:.1f}%, range: \u00b1{r:.1f}%)",
                   fontsize=22, fontweight='bold', labelpad=15)
 
@@ -272,11 +272,11 @@ def _draw_new_slope_bar(ax):
     cbar.set_ticklabels(labels)
     ax.tick_params(axis='x', labelsize=18)
     ax.annotate('Top further back', xy=(0.05, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=14, color='blue', fontweight='bold')
+                ha='center', fontsize=21, color='blue', fontweight='bold')
     ax.annotate('On design', xy=(0.5, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=14, color='green', fontweight='bold')
+                ha='center', fontsize=21, color='green', fontweight='bold')
     ax.annotate('Top further forward', xy=(0.95, 1.1), xycoords='axes fraction',
-                ha='center', fontsize=14, color='red', fontweight='bold')
+                ha='center', fontsize=21, color='red', fontweight='bold')
     ax.set_xlabel(f"Top-of-Wall Deviation from Expected ({expected_pct:.1f}%)",
                   fontsize=22, fontweight='bold', labelpad=15)
 
