@@ -262,6 +262,77 @@ def plot_peak_scatter_and_spline(peaks, output_path):
     print(f"  Saved: {output_path}")
 
 
+def plot_normals(region_points, peaks, output_path, knn=30):
+    """Plot 4: Point cloud colored by estimated normal components.
+
+    Top: colored by Nz (vertical normal component) — joints show up as
+    high |Nz| because the surface bends into the gap.
+    Bottom: colored by Nx (along-wall normal component) — should be ~0
+    on flat faces, nonzero at discontinuities.
+    """
+    if len(region_points) < knn:
+        print("  Not enough points for normal estimation, skipping normals plot.")
+        return
+
+    # Build Open3D point cloud and estimate normals
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(region_points)
+    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=knn))
+    normals = np.asarray(pcd.normals)
+
+    nx = normals[:, 0]
+    ny = normals[:, 1]
+    nz = normals[:, 2]
+
+    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+
+    # Nz — vertical component
+    ax0 = axes[0]
+    sc0 = ax0.scatter(region_points[:, 0], region_points[:, 2],
+                      c=nz, cmap='coolwarm', vmin=-1, vmax=1,
+                      s=1, alpha=0.5, rasterized=True)
+    plt.colorbar(sc0, ax=ax0, label='Nz', shrink=0.8)
+    if len(peaks) > 0:
+        ax0.scatter(peaks[:, 0], peaks[:, 1], color='lime', s=30, zorder=5,
+                    edgecolors='black', linewidths=0.5, label='Density peaks')
+        ax0.legend(fontsize=9)
+    ax0.set_ylabel("Z (m)")
+    ax0.set_title("Normal Z-component (vertical) — joints show high |Nz|")
+
+    # Nx — along-wall component
+    ax1 = axes[1]
+    sc1 = ax1.scatter(region_points[:, 0], region_points[:, 2],
+                      c=nx, cmap='coolwarm', vmin=-1, vmax=1,
+                      s=1, alpha=0.5, rasterized=True)
+    plt.colorbar(sc1, ax=ax1, label='Nx', shrink=0.8)
+    if len(peaks) > 0:
+        ax1.scatter(peaks[:, 0], peaks[:, 1], color='lime', s=30, zorder=5,
+                    edgecolors='black', linewidths=0.5, label='Density peaks')
+        ax1.legend(fontsize=9)
+    ax1.set_ylabel("Z (m)")
+    ax1.set_title("Normal X-component (along wall) — discontinuities at vertical joints")
+
+    # Ny — perpendicular to wall face
+    ax2 = axes[2]
+    sc2 = ax2.scatter(region_points[:, 0], region_points[:, 2],
+                      c=ny, cmap='coolwarm', vmin=-1, vmax=1,
+                      s=1, alpha=0.5, rasterized=True)
+    plt.colorbar(sc2, ax=ax2, label='Ny', shrink=0.8)
+    if len(peaks) > 0:
+        ax2.scatter(peaks[:, 0], peaks[:, 1], color='lime', s=30, zorder=5,
+                    edgecolors='black', linewidths=0.5, label='Density peaks')
+        ax2.legend(fontsize=9)
+    ax2.set_xlabel("X — along wall (m)")
+    ax2.set_ylabel("Z (m)")
+    ax2.set_title("Normal Y-component (into/out of wall face)")
+
+    fig.suptitle("Estimated Surface Normals", fontsize=13, fontweight='bold')
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    print(f"  Saved: {output_path}")
+
+
 def main():
     files = glob.glob("outputs/point_clouds/unrolled/displacement_*.ply")
     if not files:
@@ -317,6 +388,9 @@ def main():
 
         # Plot 3: Peak scatter and spline fit
         plot_peak_scatter_and_spline(peaks, f"{prefix}_spline_fit.png")
+
+        # Plot 4: Surface normals
+        plot_normals(region, peaks, f"{prefix}_normals.png")
 
     print(f"\nDone. Debug plots saved to {OUTPUT_DIR}/")
 
