@@ -36,9 +36,11 @@ SLICE_HALF_WIDTH = 1.5          # Meters from wall base Y to include points
                                 # Must exceed wall_height * batter + margin for
                                 # battered walls (e.g. 11m wall at 8% needs > 0.88m)
 TOP_OF_WALL_OFFSET = -0.25      # Meters — removes the lip at the top of the wall
-MAX_DISPLACEMENT_FOR_COLORS = 0.3  # Meters — normalizes displacement color mapping (symmetric fallback)
-MAX_DISPLACEMENT_POSITIVE = None   # Meters — max forward displacement for colors (None = use MAX_DISPLACEMENT_FOR_COLORS)
-MAX_DISPLACEMENT_NEGATIVE = None   # Meters — max backward displacement for colors (None = use MAX_DISPLACEMENT_FOR_COLORS)
+MAX_DISPLACEMENT_FOR_COLORS = 0.3  # Meters — symmetric fallback if positive/negative not set
+MAX_DISPLACEMENT_POSITIVE = None   # Meters — max backward displacement, blue end (None = use symmetric)
+MAX_DISPLACEMENT_NEGATIVE = None   # Meters — max forward displacement, red end (None = use symmetric)
+                                   # e.g. POSITIVE=0.1, NEGATIVE=0.5 →
+                                   #   0.1m backward (blue) ← green (on profile) → 0.5m forward (red)
 EXPECTED_WALL_SLOPE = 0.04      # Expected batter as Y/Z ratio (0 = vertical, 0.04 = 4%)
 SLOPE_THRESHOLD = None          # Percent slope threshold (None = use jet colormap)
 SLOPE_COLORMAP_RANGE = 3.5      # Maps 0 to -3.5% slope onto 0–1 for jet colormap
