@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Joint Detection Tuner</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #1a1a2e; color: #e0e0e0; }
+
+  .layout { display: flex; height: 100vh; }
+
+  /* Sidebar */
+  .sidebar { width: 320px; min-width: 320px; background: #16213e;
+             padding: 16px; overflow-y: auto; border-right: 1px solid #333; }
+  .sidebar h2 { font-size: 14px; color: #7fbbf0; margin: 16px 0 8px 0;
+                 text-transform: uppercase; letter-spacing: 1px; }
+  .sidebar h2:first-child { margin-top: 0; }
+
+  .slider-group { margin-bottom: 10px; }
+  .slider-group label { display: flex; justify-content: space-between;
+                        font-size: 12px; margin-bottom: 2px; }
+  .slider-group label span.val { color: #7fbbf0; font-weight: 600; }
+  .slider-group input[type=range] { width: 100%; accent-color: #7fbbf0; }
+
+  .stats { background: #0f3460; padding: 10px; border-radius: 6px;
+           font-size: 12px; margin-top: 12px; line-height: 1.6; }
+  .stats b { color: #7fbbf0; }
+
+  .info { font-size: 11px; color: #888; margin-top: 8px; line-height: 1.4; }
+
+  #status { font-size: 11px; color: #e94560; margin-top: 8px; min-height: 16px; }
+
+  button.reset { background: #e94560; color: white; border: none; padding: 6px 16px;
+                 border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 8px; }
+  button.reset:hover { background: #c73e54; }
+
+  /* Plots area */
+  .plots { flex: 1; overflow-y: auto; padding: 12px; }
+  .plots img { width: 100%; margin-bottom: 12px; border-radius: 4px;
+               background: #fff; }
+  .plots .loading { text-align: center; padding: 40px; color: #888; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="sidebar">
+    <h1 style="font-size:16px; margin-bottom:4px;">Joint Detection Tuner</h1>
+    <div class="info" id="cloud-info">Loading...</div>
+    <div id="status"></div>
+
+    <h2>Rasterization</h2>
+    <div class="slider-group">
+      <label>Resolution (m) <span class="val" id="v_raster_resolution"></span></label>
+      <input type="range" id="raster_resolution" min="0.005" max="0.05" step="0.001">
+    </div>
+
+    <h2>Peak Detection</h2>
+    <div class="slider-group">
+      <label>Gaussian sigma (bins) <span class="val" id="v_gaussian_sigma"></span></label>
+      <input type="range" id="gaussian_sigma" min="0.5" max="15" step="0.5">
+    </div>
+    <div class="slider-group">
+      <label>Min peak height <span class="val" id="v_peak_min_height"></span></label>
+      <input type="range" id="peak_min_height" min="0.01" max="0.5" step="0.01">
+    </div>
+
+    <h2>Sliding Window</h2>
+    <div class="slider-group">
+      <label>Window width (m) <span class="val" id="v_window_width"></span></label>
+      <input type="range" id="window_width" min="0.2" max="4.0" step="0.1">
+    </div>
+    <div class="slider-group">
+      <label>Window step (m) <span class="val" id="v_window_step"></span></label>
+      <input type="range" id="window_step" min="0.1" max="2.0" step="0.05">
+    </div>
+
+    <h2>Tracking</h2>
+    <div class="slider-group">
+      <label>Match tolerance (m) <span class="val" id="v_match_tolerance"></span></label>
+      <input type="range" id="match_tolerance" min="0.01" max="0.3" step="0.005">
+    </div>
+    <div class="slider-group">
+      <label>Min track length <span class="val" id="v_min_track_length"></span></label>
+      <input type="range" id="min_track_length" min="2" max="30" step="1">
+    </div>
+
+    <h2>Spline Fitting</h2>
+    <div class="slider-group">
+      <label>Smoothing factor <span class="val" id="v_spline_smoothing"></span></label>
+      <input type="range" id="spline_smoothing" min="0.01" max="20" step="0.1">
+    </div>
+
+    <h2>Block Geometry</h2>
+    <div class="slider-group">
+      <label>Block height (in) <span class="val" id="v_block_height_in"></span></label>
+      <input type="range" id="block_height_in" min="4" max="16" step="1">
+    </div>
+    <div class="slider-group">
+      <label>Height tolerance <span class="val" id="v_block_height_tol"></span></label>
+      <input type="range" id="block_height_tol" min="0.05" max="0.6" step="0.05">
+    </div>
+
+    <button class="reset" onclick="resetDefaults()">Reset to Defaults</button>
+
+    <div class="stats" id="stats">Waiting for first update...</div>
+  </div>
+
+  <div class="plots" id="plots">
+    <div class="loading">Generating initial plots...</div>
+  </div>
+</div>
+
+<script>
+const SLIDERS = [
+  'raster_resolution', 'gaussian_sigma', 'peak_min_height',
+  'window_width', 'window_step', 'match_tolerance',
+  'min_track_length', 'spline_smoothing', 'block_height_in',
+  'block_height_tol'
+];
+
+let defaults = {};
+let debounceTimer = null;
+let pendingRequest = null;
+
+async function init() {
+  // Load defaults
+  const resp = await fetch('/defaults');
+  defaults = await resp.json();
+
+  // Load info
+  const infoResp = await fetch('/info');
+  const info = await infoResp.json();
+  document.getElementById('cloud-info').textContent =
+    `${info.n_points.toLocaleString()} points | ` +
+    `X: [${info.x_range[0].toFixed(1)}, ${info.x_range[1].toFixed(1)}] | ` +
+    `Z: [${info.z_range[0].toFixed(1)}, ${info.z_range[1].toFixed(1)}]`;
+
+  // Set slider values
+  resetDefaults();
+
+  // Attach listeners
+  for (const id of SLIDERS) {
+    document.getElementById(id).addEventListener('input', () => {
+      updateLabel(id);
+      scheduleUpdate();
+    });
+  }
+
+  // Initial render
+  doUpdate();
+}
+
+function resetDefaults() {
+  for (const id of SLIDERS) {
+    const el = document.getElementById(id);
+    el.value = defaults[id];
+    updateLabel(id);
+  }
+  scheduleUpdate();
+}
+
+function updateLabel(id) {
+  const el = document.getElementById(id);
+  const display = document.getElementById('v_' + id);
+  const v = parseFloat(el.value);
+  if (id === 'min_track_length' || id === 'block_height_in') {
+    display.textContent = v.toFixed(0);
+  } else {
+    display.textContent = v.toFixed(3);
+  }
+}
+
+function getParams() {
+  const p = {};
+  for (const id of SLIDERS) {
+    p[id] = parseFloat(document.getElementById(id).value);
+  }
+  return p;
+}
+
+function scheduleUpdate() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(doUpdate, 300);
+}
+
+async function doUpdate() {
+  const status = document.getElementById('status');
+  status.textContent = 'Computing...';
+
+  // Cancel pending request
+  if (pendingRequest) {
+    pendingRequest.abort();
+  }
+
+  const controller = new AbortController();
+  pendingRequest = controller;
+
+  const start = performance.now();
+
+  try {
+    const resp = await fetch('/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(getParams()),
+      signal: controller.signal,
+    });
+    const data = await resp.json();
+    const elapsed = ((performance.now() - start) / 1000).toFixed(1);
+
+    document.getElementById('plots').innerHTML =
+      `<img src="data:image/png;base64,${data.raster}" alt="Raster">` +
+      `<img src="data:image/png;base64,${data.profiles}" alt="Profiles">` +
+      `<img src="data:image/png;base64,${data.tracked}" alt="Tracked">`;
+
+    const s = data.stats;
+    document.getElementById('stats').innerHTML =
+      `<b>Raster:</b> ${s.raster_shape[1]} x ${s.raster_shape[0]}<br>` +
+      `<b>Detections:</b> ${s.n_detections}<br>` +
+      `<b>Joints:</b> ${s.n_joints} | <b>Cracks:</b> ${s.n_cracks}<br>` +
+      `<b>Time:</b> ${elapsed}s`;
+
+    status.textContent = '';
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      status.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  pendingRequest = null;
+}
+
+init();
+</script>
+</body>
+</html>
