@@ -76,12 +76,10 @@ def _write_ply_with_scalars(points, filePath, colors, scalars):
                 colors = colors.clip(0, 255).astype(np.uint8)
         header += "property uchar red\nproperty uchar green\nproperty uchar blue\n"
 
-    scalar_names = list(scalars.keys())
-    scalar_arrays = []
-    for name in scalar_names:
-        arr = np.asarray(scalars[name], dtype=np.float32).ravel()
-        scalar_arrays.append(arr)
-        header += "property float %s\n" % name
+    # Write scalar value as intensity (universally recognized by point cloud viewers)
+    scalar_key = next(iter(scalars))
+    scalar_array = np.asarray(scalars[scalar_key], dtype=np.float32).ravel()
+    header += "property float intensity\n"
 
     header += "end_header\n"
 
@@ -91,8 +89,7 @@ def _write_ply_with_scalars(points, filePath, colors, scalars):
             f.write(points[i].tobytes())
             if has_colors:
                 f.write(colors[i].tobytes())
-            for arr in scalar_arrays:
-                f.write(arr[i:i+1].tobytes())
+            f.write(scalar_array[i:i+1].tobytes())
 
 
 def getCrossSection(slicePoints, linePoints, filePath, k, slopeColor):
