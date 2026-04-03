@@ -81,7 +81,8 @@ for i in tqdm(range(len(files))):
     colors = pc_source.point.colors.numpy() / 255
 
     colors = colors.reshape(-1, 3)
-    colors = np.clip(colors, 0, 1)
+    if colors.max() > 1.0:
+        colors = colors / 255.0
 
     x_axis = 0
     y_axis = 2

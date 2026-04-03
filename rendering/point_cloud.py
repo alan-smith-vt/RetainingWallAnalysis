@@ -129,8 +129,8 @@ for target in [RENDER_TARGET]:
         points = pc_source.point.positions.numpy()
         colors = pc_source.point.colors.numpy()
         colors = colors.reshape(-1, 3)
-        print(f"[DEBUG] colors range: min={colors.min():.4f} max={colors.max():.4f} sample={colors[0]}")
-        colors = np.clip(colors, 0, 1)
+        if colors.max() > 1.0:
+            colors = colors / 255.0
         x_axis = 0
         y_axis = 2
         z_axis = 1
