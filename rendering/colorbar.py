@@ -126,7 +126,6 @@ def create_displacement_colorbar(save_path=None):
     """Standalone displacement colorbar — same style as combined legend."""
     fig, ax = plt.subplots(figsize=(10, 3))
     _draw_displacement_bar(ax)
-    plt.tight_layout()
     _save_or_show(fig, save_path)
 
 
