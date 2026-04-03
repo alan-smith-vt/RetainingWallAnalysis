@@ -111,49 +111,8 @@ def _staggered_ticks(ax, ticks, labels, fontsize=14, min_gap_pts=80,
     return base_tick + max_row * row_height + fontsize + 10
 
 
-def create_displacement_colorbar(save_path=None):
-    """
-    Asymmetric jet colorbar for displacement analysis.
-
-    Blue = more batter than expected (wall behind profile)
-    Green/Yellow = on expected profile
-    Red = less batter than expected (wall forward of profile)
-    """
-    fig, ax = plt.subplots(figsize=(5, 3.5))
-
-    max_pos_m = MAX_DISPLACEMENT_POSITIVE if MAX_DISPLACEMENT_POSITIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
-    max_neg_m = MAX_DISPLACEMENT_NEGATIVE if MAX_DISPLACEMENT_NEGATIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
-    max_pos_in = max_pos_m * METERS_TO_FEET * 12
-    max_neg_in = max_neg_m * METERS_TO_FEET * 12
-
-    _displacement_gradient(ax, max_pos_in, max_neg_in)
-
-    ticks = [max_pos_in, max_pos_in / 2, 0, -max_neg_in / 2, -max_neg_in]
-    labels = [
-        f"+{max_pos_in:.1f}\"",
-        f"+{max_pos_in / 2:.1f}\"",
-        "0 (on profile)",
-        f"-{max_neg_in / 2:.1f}\"",
-        f"-{max_neg_in:.1f}\"",
-    ]
-    depth = _staggered_ticks(ax, ticks, labels, fontsize=14)
-
-    expected_pct = EXPECTED_WALL_SLOPE * 100
-    title = (f"Displacement from Expected Profile "
-             f"(expected batter: {expected_pct:.1f}%)")
-    # Place title below deepest tick label
-    ax.annotate(title, xy=(0.5, -(depth + 10)),
-                xycoords=('axes fraction', 'axes points'),
-                ha='center', va='top', fontsize=17, fontweight='bold')
-
-    zero_frac = max_pos_in / (max_pos_in + max_neg_in)
-    ax.annotate('More batter\nthan expected', xy=(0.05, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=12, color='blue', fontweight='bold')
-    ax.annotate('On profile', xy=(zero_frac, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=12, color='green', fontweight='bold')
-    ax.annotate('Less batter\nthan expected', xy=(0.95, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=12, color='red', fontweight='bold')
-
+def _save_or_show(fig, save_path):
+    """Save figure to file or display it."""
     if save_path:
         ensure_dir(save_path)
         fig.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
@@ -161,116 +120,39 @@ def create_displacement_colorbar(save_path=None):
     else:
         plt.show()
     plt.close(fig)
+
+
+def create_displacement_colorbar(save_path=None):
+    """Standalone displacement colorbar — same style as combined legend."""
+    fig, ax = plt.subplots(figsize=(10, 3))
+    _draw_displacement_bar(ax)
+    plt.tight_layout()
+    _save_or_show(fig, save_path)
 
 
 def create_slope_colorbar(save_path=None):
-    """
-    Centered jet colorbar for piecewise slope analysis.
-
-    Blue = measured slope > expected (more batter)
-    Green/Yellow = measured slope matches expected
-    Red = measured slope < expected (less batter)
-
-    Range: expected - SLOPE_COLORMAP_RANGE% to expected + SLOPE_COLORMAP_RANGE%
-    """
-    fig, ax = plt.subplots(figsize=(5, 3))
-
-    norm = mcolors.Normalize(vmin=0, vmax=1)
-    sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
-    sm.set_array([])
-
-    cbar = fig.colorbar(sm, cax=ax, orientation='horizontal')
-
-    expected_pct = EXPECTED_WALL_SLOPE * 100
-    range_pct = SLOPE_COLORMAP_RANGE
-
-    tick_positions = [0, 0.25, 0.5, 0.75, 1.0]
-    tick_labels = [
-        f"{expected_pct + range_pct:.1f}%",
-        f"{expected_pct + range_pct/2:.1f}%",
-        f"{expected_pct:.1f}% (expected)",
-        f"{expected_pct - range_pct/2:.1f}%",
-        f"{expected_pct - range_pct:.1f}%",
-    ]
-    depth = _staggered_ticks(ax, tick_positions, tick_labels, fontsize=14)
-
-    title = (f"Piecewise Slope  |  "
-             f"expected: {expected_pct:.1f}%  |  "
-             f"range: \u00b1{range_pct:.1f}%")
-    ax.annotate(title, xy=(0.5, -(depth + 10)),
-                xycoords=('axes fraction', 'axes points'),
-                ha='center', va='top', fontsize=17, fontweight='bold')
-
-    ax.annotate('More batter', xy=(0.05, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=12, color='blue', fontweight='bold')
-    ax.annotate('On design', xy=(0.5, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=12, color='green', fontweight='bold')
-    ax.annotate('Less batter', xy=(0.95, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=12, color='red', fontweight='bold')
-
-    if save_path:
-        ensure_dir(save_path)
-        fig.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
-        print(f"Saved: {save_path}")
-    else:
-        plt.show()
-    plt.close(fig)
+    """Standalone slope colorbar — same style as combined legend."""
+    fig, ax = plt.subplots(figsize=(10, 3))
+    _draw_slope_bar(ax)
+    plt.tight_layout()
+    _save_or_show(fig, save_path)
 
 
 def create_new_slope_colorbar(save_path=None):
-    """
-    Centered jet colorbar for the new slope (top-vs-bottom deviation) analysis.
-
-    Same color convention but values represent deviation from expected.
-    Blue = top of wall further back than expected
-    Red = top of wall further forward than expected
-    """
-    fig, ax = plt.subplots(figsize=(5, 3))
-
-    norm = mcolors.Normalize(vmin=0, vmax=1)
-    sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
-    sm.set_array([])
-
-    cbar = fig.colorbar(sm, cax=ax, orientation='horizontal')
-
-    range_pct = SLOPE_COLORMAP_RANGE
-    expected_pct = EXPECTED_WALL_SLOPE * 100
-
-    tick_positions = [0, 0.25, 0.5, 0.75, 1.0]
-    tick_labels = [
-        f"+{range_pct:.1f}% deviation",
-        f"+{range_pct/2:.1f}%",
-        f"0% (matches {expected_pct:.1f}%)",
-        f"-{range_pct/2:.1f}%",
-        f"-{range_pct:.1f}% deviation",
-    ]
-    depth = _staggered_ticks(ax, tick_positions, tick_labels, fontsize=14)
-
-    title = (f"Top-of-Wall Slope Deviation from Expected ({expected_pct:.1f}%)  |  "
-             f"range: \u00b1{range_pct:.1f}%")
-    ax.annotate(title, xy=(0.5, -(depth + 10)),
-                xycoords=('axes fraction', 'axes points'),
-                ha='center', va='top', fontsize=17, fontweight='bold')
-
-    ax.annotate('Top further back', xy=(0.05, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=12, color='blue', fontweight='bold')
-    ax.annotate('On design', xy=(0.5, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=12, color='green', fontweight='bold')
-    ax.annotate('Top further forward', xy=(0.95, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=12, color='red', fontweight='bold')
-
-    if save_path:
-        ensure_dir(save_path)
-        fig.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
-        print(f"Saved: {save_path}")
-    else:
-        plt.show()
-    plt.close(fig)
+    """Standalone new slope colorbar — same style as combined legend."""
+    fig, ax = plt.subplots(figsize=(10, 3))
+    _draw_new_slope_bar(ax)
+    plt.tight_layout()
+    _save_or_show(fig, save_path)
 
 
 def create_all_colorbars(save_dir="outputs/images/"):
-    """Generate the combined legend image with all three colorbars."""
+    """Generate individual and combined legend images."""
     os.makedirs(save_dir, exist_ok=True)
+
+    create_displacement_colorbar(save_path=os.path.join(save_dir, "legend_displacement.png"))
+    create_slope_colorbar(save_path=os.path.join(save_dir, "legend_slope.png"))
+    create_new_slope_colorbar(save_path=os.path.join(save_dir, "legend_new_slope.png"))
 
     combined_path = os.path.join(save_dir, "legend_colorbars.png")
 
@@ -319,10 +201,10 @@ def _draw_displacement_bar(ax):
                     arrowprops=dict(arrowstyle='-', color='k', lw=1))
         ax.annotate(label, xy=(t, label_y),
                     xycoords=('data', 'axes points'),
-                    ha='center', va='top', fontsize=12)
+                    ha='center', va='top', fontsize=18)
     ax.tick_params(axis='x', length=0)
     ax.set_xlabel(f"Displacement from Expected Profile (batter: {expected_pct:.1f}%)",
-                  fontsize=15, fontweight='bold', labelpad=50)
+                  fontsize=22, fontweight='bold', labelpad=55)
 
 
 def _draw_slope_bar(ax):
@@ -345,9 +227,9 @@ def _draw_slope_bar(ax):
     ]
     cbar.set_ticks(ticks)
     cbar.set_ticklabels(labels)
-    ax.tick_params(axis='x', labelsize=12)
+    ax.tick_params(axis='x', labelsize=18)
     ax.set_xlabel(f"Piecewise Slope (expected: {expected_pct:.1f}%, range: \u00b1{r:.1f}%)",
-                  fontsize=15, fontweight='bold', labelpad=15)
+                  fontsize=22, fontweight='bold', labelpad=15)
 
 
 def _draw_new_slope_bar(ax):
@@ -370,9 +252,9 @@ def _draw_new_slope_bar(ax):
     ]
     cbar.set_ticks(ticks)
     cbar.set_ticklabels(labels)
-    ax.tick_params(axis='x', labelsize=12)
+    ax.tick_params(axis='x', labelsize=18)
     ax.set_xlabel(f"Top-of-Wall Deviation from Expected ({expected_pct:.1f}%)",
-                  fontsize=15, fontweight='bold', labelpad=15)
+                  fontsize=22, fontweight='bold', labelpad=15)
 
 
 if __name__ == "__main__":
