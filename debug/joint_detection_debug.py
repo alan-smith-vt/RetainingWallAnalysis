@@ -46,6 +46,9 @@ PEAK_MIN_DIST_M   = 0.05   # just enough to avoid double-counting (5cm)
 WINDOW_WIDTH      = 2.0
 WINDOW_STEP       = 0.25
 
+MATCH_TOLERANCE   = _cfg('JOINT_MATCH_TOLERANCE', 0.05)
+MIN_TRACK_PEAKS   = 5
+
 OUTPUT_DIR = "outputs/debug"
 
 
@@ -142,9 +145,49 @@ def detect_peaks_windowed(raster_hz, x_edges, z_edges):
     return detections
 
 
+# ── Tracking ────────────────────────────────────────────────────────────────
+
+def link_peaks_to_tracks(detections):
+    """Link adjacent peaks into tracks using Z-tolerance matching.
+
+    For each consecutive pair of windows, match peaks that are within
+    MATCH_TOLERANCE in Z. No block height assumptions.
+
+    Returns list of tracks, each a list of (x, z) tuples.
+    """
+    tracks = []       # list of [(x, z), ...]
+    active_z = []     # current Z for each active track
+
+    for cx, _, _, peak_zs in detections:
+        used_t, used_p = set(), set()
+
+        if active_z:
+            az = np.array(active_z)
+            dists = np.abs(az[:, None] - peak_zs[None, :])
+
+            for fi in np.argsort(dists.ravel()):
+                ti, pi = divmod(int(fi), len(peak_zs))
+                if ti in used_t or pi in used_p:
+                    continue
+                if dists[ti, pi] > MATCH_TOLERANCE:
+                    break
+                tracks[ti].append((cx, peak_zs[pi]))
+                active_z[ti] = peak_zs[pi]
+                used_t.add(ti)
+                used_p.add(pi)
+
+        for pi in range(len(peak_zs)):
+            if pi not in used_p:
+                tracks.append([(cx, peak_zs[pi])])
+                active_z.append(peak_zs[pi])
+
+    # Filter by minimum length
+    return [t for t in tracks if len(t) >= MIN_TRACK_PEAKS]
+
+
 # ── Plot ────────────────────────────────────────────────────────────────────
 
-def plot_peaks_on_raster(raster_hz, x_edges, z_edges, detections, output_path):
+def plot_joint_lines(raster_hz, x_edges, z_edges, tracks, output_path):
     x_c = (x_edges[:-1] + x_edges[1:]) / 2
     z_c = (z_edges[:-1] + z_edges[1:]) / 2
     extent = [x_c[0], x_c[-1], z_c[0], z_c[-1]]
@@ -153,21 +196,17 @@ def plot_peaks_on_raster(raster_hz, x_edges, z_edges, detections, output_path):
     ax.imshow(raster_hz, aspect='auto', origin='lower', extent=extent,
               cmap='hot', interpolation='nearest')
 
-    # Draw each detection: dot at peak, horizontal line for window extent
-    colors = plt.cm.tab10(np.linspace(0, 1, 10))
-    for i, (cx, wx_s, wx_e, peak_zs) in enumerate(detections):
-        c = colors[i % len(colors)]
-        for pz in peak_zs:
-            ax.plot(cx, pz, '.', color=c, markersize=4, zorder=5)
-            ax.plot([wx_s, wx_e], [pz, pz], '-', color=c, linewidth=0.5,
-                    alpha=0.6, zorder=4)
+    for track in tracks:
+        xs = [p[0] for p in track]
+        zs = [p[1] for p in track]
+        ax.plot(xs, zs, '-', color='white', linewidth=0.8, solid_capstyle='butt')
 
     ax.set_xlabel("X — along wall (m)")
     ax.set_ylabel("Z — elevation (m)")
-    ax.set_title("Nz Raster + Detected Peaks (dots) with Window Extent (lines)\n"
-                 "sigma=%.1f, min_height=%.3f, min_dist=%.3fm, "
-                 "window=%.2fm, step=%.2fm" % (
-                     GAUSSIAN_SIGMA, PEAK_MIN_HEIGHT, PEAK_MIN_DIST_M,
+    ax.set_title("Nz Raster + Joint Lines (min %d peaks, tol=%.3fm)\n"
+                 "sigma=%.1f, min_height=%.3f, window=%.2fm, step=%.2fm" % (
+                     MIN_TRACK_PEAKS, MATCH_TOLERANCE,
+                     GAUSSIAN_SIGMA, PEAK_MIN_HEIGHT,
                      WINDOW_WIDTH, WINDOW_STEP))
     fig.tight_layout()
     fig.savefig(output_path, dpi=200)
@@ -217,8 +256,12 @@ def main():
         n_peaks = sum(len(d[3]) for d in detections)
         print(f"  {len(detections)} windows, {n_peaks} total peaks")
 
-        plot_peaks_on_raster(raster_hz, x_edges, z_edges, detections,
-                             f"{OUTPUT_DIR}/wall_{wall_id}_peaks.png")
+        print("  Linking peaks into tracks...")
+        tracks = link_peaks_to_tracks(detections)
+        print(f"  {len(tracks)} tracks (>= {MIN_TRACK_PEAKS} peaks)")
+
+        plot_joint_lines(raster_hz, x_edges, z_edges, tracks,
+                         f"{OUTPUT_DIR}/wall_{wall_id}_joints.png")
 
     print(f"\nDone. Output in {OUTPUT_DIR}/")
 
