@@ -277,18 +277,20 @@ def assign_points_to_tracks(points, fitted_tracks):
     displacement = np.full(N, np.nan)
 
     for i, track in enumerate(fitted_tracks):
-        # X range mask
-        in_x = (px >= track['x_min']) & (px <= track['x_max'])
-        if not np.any(in_x):
+        # Cheap bounding box filter: X range AND Z within mean_z ± (influence + max spline deviation)
+        z_margin = INFLUENCE_HALF_Z + np.ptp(track['z'])  # generous Z bound
+        candidates = ((px >= track['x_min']) & (px <= track['x_max']) &
+                       (pz >= track['mean_z'] - z_margin) &
+                       (pz <= track['mean_z'] + z_margin))
+        if not np.any(candidates):
             continue
 
+        cand_idx = np.where(candidates)[0]
         x_range = track['x_max'] - track['x_min']
 
         if track['tck'] is not None and x_range > 0:
             tck = track['tck']
-
-            # Evaluate spline at each in-range point's X
-            u_pts = np.clip((px[in_x] - track['x_min']) / x_range, 0, 1)
+            u_pts = np.clip((px[cand_idx] - track['x_min']) / x_range, 0, 1)
             x_eval, z_eval = splev(u_pts, tck)
             dx_du, dz_du = splev(u_pts, tck, der=1)
 
@@ -298,20 +300,15 @@ def assign_points_to_tracks(points, fitted_tracks):
             _, z_start = splev(0.0, tck)
             disp = z_eval - z_start
         else:
-            z_eval = np.full(in_x.sum(), track['mean_z'])
-            dzdx = np.zeros(in_x.sum())
-            disp = np.zeros(in_x.sum())
+            z_eval = np.full(len(cand_idx), track['mean_z'])
+            dzdx = np.zeros(len(cand_idx))
+            disp = np.zeros(len(cand_idx))
 
-        # Z distance from spline
-        z_dist = np.abs(pz[in_x] - z_eval)
-
-        # Only within influence zone
+        z_dist = np.abs(pz[cand_idx] - z_eval)
         in_zone = z_dist <= INFLUENCE_HALF_Z
+        update = in_zone & (z_dist < best_dist[cand_idx])
 
-        # Update where this track is closer than any previous
-        in_x_indices = np.where(in_x)[0]
-        update = in_zone & (z_dist < best_dist[in_x_indices])
-        upd_idx = in_x_indices[update]
+        upd_idx = cand_idx[update]
         best_dist[upd_idx] = z_dist[update]
         track_idx[upd_idx] = i
         spline_dzdx[upd_idx] = dzdx[update]
