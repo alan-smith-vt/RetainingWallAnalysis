@@ -22,6 +22,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.ndimage import gaussian_filter1d
+from scipy.interpolate import splprep, splev
 import glob
 
 from config import FEET_TO_METERS
@@ -211,6 +212,114 @@ def link_peaks_to_tracks(detections):
     return [t for t in finished_tracks if len(t) >= MIN_TRACK_PEAKS]
 
 
+# ── Spline fitting and field computation ────────────────────────────────────
+
+SPLINE_SMOOTHING = _cfg('JOINT_SPLINE_SMOOTHING', 1.0)
+
+
+def fit_tracks(tracks):
+    """Fit a smoothed spline to each track.
+
+    Returns list of dicts with:
+        'x', 'z': raw arrays
+        'x_min', 'x_max': horizontal extent
+        'tck': spline coefficients (or None)
+        'mean_z': mean elevation for sorting
+    """
+    fitted = []
+    for track in tracks:
+        x = np.array([p[0] for p in track])
+        z = np.array([p[1] for p in track])
+        entry = {
+            'x': x, 'z': z,
+            'x_min': x.min(), 'x_max': x.max(),
+            'mean_z': z.mean(),
+            'z_start': z[0],
+            'tck': None,
+        }
+        if len(x) >= 4:
+            try:
+                tck, _ = splprep([x, z], s=SPLINE_SMOOTHING)
+                entry['tck'] = tck
+            except Exception:
+                pass
+        fitted.append(entry)
+
+    # Sort by mean Z so we can find adjacent tracks
+    fitted.sort(key=lambda t: t['mean_z'])
+    return fitted
+
+
+INFLUENCE_HALF_Z = 8 * FEET_TO_METERS / 12  # ±8 inches in meters
+
+
+def assign_points_to_tracks(points, fitted_tracks):
+    """Assign each point to a track based on ±8 inch vertical influence zone.
+
+    A point belongs to track i if:
+      - Its Z is within ±INFLUENCE_HALF_Z of the track's spline Z at that X
+        (falls back to mean_z if no spline)
+      - Its X is within [x_min, x_max] of that track
+
+    If a point falls in overlapping zones, the closest track wins.
+
+    Returns:
+        track_idx: (N,) int array, -1 if unassigned
+        spline_dzdx: (N,) float array, spline derivative at point's X (NaN if unassigned)
+        displacement: (N,) float array, spline Z(x) - Z(x_start) (NaN if unassigned)
+    """
+    N = len(points)
+    px, pz = points[:, 0], points[:, 2]
+
+    track_idx = np.full(N, -1, dtype=int)
+    best_dist = np.full(N, np.inf)
+    spline_dzdx = np.full(N, np.nan)
+    displacement = np.full(N, np.nan)
+
+    for i, track in enumerate(fitted_tracks):
+        # X range mask
+        in_x = (px >= track['x_min']) & (px <= track['x_max'])
+        if not np.any(in_x):
+            continue
+
+        x_range = track['x_max'] - track['x_min']
+
+        if track['tck'] is not None and x_range > 0:
+            tck = track['tck']
+
+            # Evaluate spline at each in-range point's X
+            u_pts = np.clip((px[in_x] - track['x_min']) / x_range, 0, 1)
+            x_eval, z_eval = splev(u_pts, tck)
+            dx_du, dz_du = splev(u_pts, tck, der=1)
+
+            with np.errstate(divide='ignore', invalid='ignore'):
+                dzdx = np.where(np.abs(dx_du) > 1e-10, dz_du / dx_du, 0.0)
+
+            _, z_start = splev(0.0, tck)
+            disp = z_eval - z_start
+        else:
+            z_eval = np.full(in_x.sum(), track['mean_z'])
+            dzdx = np.zeros(in_x.sum())
+            disp = np.zeros(in_x.sum())
+
+        # Z distance from spline
+        z_dist = np.abs(pz[in_x] - z_eval)
+
+        # Only within influence zone
+        in_zone = z_dist <= INFLUENCE_HALF_Z
+
+        # Update where this track is closer than any previous
+        in_x_indices = np.where(in_x)[0]
+        update = in_zone & (z_dist < best_dist[in_x_indices])
+        upd_idx = in_x_indices[update]
+        best_dist[upd_idx] = z_dist[update]
+        track_idx[upd_idx] = i
+        spline_dzdx[upd_idx] = dzdx[update]
+        displacement[upd_idx] = disp[update]
+
+    return track_idx, spline_dzdx, displacement
+
+
 # ── Plot ────────────────────────────────────────────────────────────────────
 
 def plot_joint_lines(raster_hz, x_edges, z_edges, tracks, output_path):
@@ -234,6 +343,72 @@ def plot_joint_lines(raster_hz, x_edges, z_edges, tracks, output_path):
                      MIN_TRACK_PEAKS, MATCH_TOLERANCE,
                      GAUSSIAN_SIGMA, PEAK_MIN_HEIGHT,
                      WINDOW_WIDTH, WINDOW_STEP))
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
+    print(f"  Saved: {output_path}")
+
+
+def plot_rotation(points, dzdx, track_idx, output_path):
+    """Color points by spline derivative (rotation/slope of joint)."""
+    assigned = track_idx >= 0
+    if not np.any(assigned):
+        print("  No points assigned to tracks, skipping rotation plot.")
+        return
+
+    fig, ax = plt.subplots(figsize=(16, 8))
+
+    # Plot unassigned points in dark gray
+    unassigned = ~assigned
+    if np.any(unassigned):
+        ax.scatter(points[unassigned, 0], points[unassigned, 2],
+                   c='#1a1a1a', s=0.1, alpha=0.3, rasterized=True)
+
+    # Plot assigned points colored by dz/dx
+    vals = dzdx[assigned]
+    vmax = max(0.001, np.nanpercentile(np.abs(vals), 95))
+    sc = ax.scatter(points[assigned, 0], points[assigned, 2],
+                    c=vals, cmap='coolwarm', vmin=-vmax, vmax=vmax,
+                    s=0.5, alpha=0.7, rasterized=True)
+    plt.colorbar(sc, ax=ax, label='dZ/dX (rotation)', shrink=0.8)
+
+    ax.set_xlabel("X — along wall (m)")
+    ax.set_ylabel("Z — elevation (m)")
+    ax.set_title("Joint Rotation (dZ/dX from spline fit)")
+    ax.set_facecolor('#1a1a1a')
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
+    print(f"  Saved: {output_path}")
+
+
+def plot_displacement(points, disp, track_idx, output_path):
+    """Color points by joint displacement (Z(x) - Z(x_start))."""
+    assigned = track_idx >= 0
+    if not np.any(assigned):
+        print("  No points assigned to tracks, skipping displacement plot.")
+        return
+
+    fig, ax = plt.subplots(figsize=(16, 8))
+
+    # Unassigned in dark gray
+    unassigned = ~assigned
+    if np.any(unassigned):
+        ax.scatter(points[unassigned, 0], points[unassigned, 2],
+                   c='#1a1a1a', s=0.1, alpha=0.3, rasterized=True)
+
+    # Assigned colored by displacement
+    vals = disp[assigned]
+    vmax = max(0.001, np.nanpercentile(np.abs(vals), 95))
+    sc = ax.scatter(points[assigned, 0], points[assigned, 2],
+                    c=vals, cmap='coolwarm', vmin=-vmax, vmax=vmax,
+                    s=0.5, alpha=0.7, rasterized=True)
+    plt.colorbar(sc, ax=ax, label='Displacement Z(x) - Z(start) (m)', shrink=0.8)
+
+    ax.set_xlabel("X — along wall (m)")
+    ax.set_ylabel("Z — elevation (m)")
+    ax.set_title("Joint Displacement (Z relative to start of each joint)")
+    ax.set_facecolor('#1a1a1a')
     fig.tight_layout()
     fig.savefig(output_path, dpi=200)
     plt.close(fig)
@@ -288,6 +463,20 @@ def main():
 
         plot_joint_lines(raster_hz, x_edges, z_edges, tracks,
                          f"{OUTPUT_DIR}/wall_{wall_id}_joints.png")
+
+        print("  Fitting splines...")
+        fitted = fit_tracks(tracks)
+        print(f"  {sum(1 for t in fitted if t['tck'] is not None)} tracks with splines")
+
+        print("  Assigning points to tracks (±8in influence)...")
+        track_idx, dzdx, disp = assign_points_to_tracks(points, fitted)
+        n_assigned = np.sum(track_idx >= 0)
+        print(f"  {n_assigned}/{len(points)} points assigned")
+
+        plot_rotation(points, dzdx, track_idx,
+                      f"{OUTPUT_DIR}/wall_{wall_id}_rotation.png")
+        plot_displacement(points, disp, track_idx,
+                          f"{OUTPUT_DIR}/wall_{wall_id}_displacement.png")
 
     print(f"\nDone. Output in {OUTPUT_DIR}/")
 
