@@ -6,10 +6,10 @@ used in the displacement and slope analyses. Reads all parameters from
 config.py so the legends always stay in sync with the analysis output.
 
 Outputs:
-  renders/legends/displacement_colorbar.png
-  renders/legends/slope_colorbar.png
-  renders/legends/new_slope_colorbar.png
-  renders/legends/all_colorbars.png  (combined)
+  outputs/images/legend_displacement_colorbar.png
+  outputs/images/legend_slope_colorbar.png
+  outputs/images/legend_new_slope_colorbar.png
+  outputs/images/legend_all_colorbars.png  (combined)
 """
 
 import sys, os
@@ -208,14 +208,14 @@ def create_new_slope_colorbar(save_path=None):
     plt.close(fig)
 
 
-def create_all_colorbars(save_dir="renders/legends/"):
+def create_all_colorbars(save_dir="outputs/images/"):
     """Generate all three colorbars and a combined image."""
     os.makedirs(save_dir, exist_ok=True)
 
-    disp_path = os.path.join(save_dir, "displacement_colorbar.png")
-    slope_path = os.path.join(save_dir, "slope_colorbar.png")
-    new_slope_path = os.path.join(save_dir, "new_slope_colorbar.png")
-    combined_path = os.path.join(save_dir, "all_colorbars.png")
+    disp_path = os.path.join(save_dir, "legend_displacement_colorbar.png")
+    slope_path = os.path.join(save_dir, "legend_slope_colorbar.png")
+    new_slope_path = os.path.join(save_dir, "legend_new_slope_colorbar.png")
+    combined_path = os.path.join(save_dir, "legend_all_colorbars.png")
 
     create_displacement_colorbar(save_path=disp_path)
     create_slope_colorbar(save_path=slope_path)

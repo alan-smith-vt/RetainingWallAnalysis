@@ -142,11 +142,16 @@ def overlay_images_white_mask(base_image, overlay_image, x_offset, y_offset, whi
 
 # ── Main execution ──────────────────────────────────────────────────────────
 
-files = glob.glob("renders/elevations/*.png")
+files = glob.glob("outputs/images/elevation_*.png")
 printf("Processing elevation images with grid overlays")
 
 for file in files:
-    wall_id = file.split("\\")[-1][0]
+    # Skip elevation_curve files — only process elevation profile images
+    basename = os.path.basename(file)
+    if basename.startswith("elevation_curve_"):
+        continue
+    # Extract wall_id from filename like elevation_1_0.1.png
+    wall_id = basename.split("_")[1]
     img = cv2.imread(file, cv2.IMREAD_UNCHANGED)
 
     padx = GRID_PAD_X
@@ -204,10 +209,10 @@ for file in files:
         color=(0, 0, 0)
     )
 
-    overlay_img = cv2.imread("renders/elevations/curves/%s_elevation.png" % wall_id, cv2.IMREAD_UNCHANGED)
+    overlay_img = cv2.imread("outputs/images/elevation_curve_%s.png" % wall_id, cv2.IMREAD_UNCHANGED)
     result_image = overlay_images_white_mask(new_img, overlay_img, padx, 0)
-    ensure_dir("renders/overlays/elevations/%s.png" % wall_id)
-    cv2.imwrite("renders/overlays/elevations/%s.png" % wall_id, result_image)
+    ensure_dir("outputs/images/elevation_overlay_%s.png" % wall_id)
+    cv2.imwrite("outputs/images/elevation_overlay_%s.png" % wall_id, result_image)
     printf(f"Completed Wall #{wall_id}")
 
 printf("All walls processed successfully!")

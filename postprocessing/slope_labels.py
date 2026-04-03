@@ -86,18 +86,22 @@ def add_vertical_text_pil(image, text_list, font_size=20, color=(255, 255, 255))
 
 # ── Main execution ──────────────────────────────────────────────────────────
 
-files = glob.glob("renders/slopes/*.png")
+files = glob.glob("outputs/images/slope_*.png")
 for file in files:
-    name = file[-9:-4]
+    basename = os.path.splitext(os.path.basename(file))[0]  # e.g. slope_1_1.0
+    # Skip already-labeled files and threshold files
+    if "_labeled" in basename or "threshold" in basename:
+        continue
+    name = basename.replace("slope_", "")  # e.g. 1_1.0
     source_image = cv2.imread(file)
-    text_labels = np.loadtxt("renders/slopes/slope_" + name + ".csv", delimiter=',')
+    text_labels = np.loadtxt("outputs/images/slope_%s.csv" % name, delimiter=',')
     text_labels = np.round(text_labels * 100, 2)
     text_labels = text_labels.astype(str)
     text_labels = np.char.add(text_labels, '%')
     text_labels = np.append(text_labels, '')
 
     result_pil = add_vertical_text_pil(source_image, text_labels, font_size=SLOPE_LABEL_FONT_SIZE, color=SLOPE_LABEL_COLOR)
-    ensure_dir('renders/slopes/labeled/slope_%s_labeled.png' % name)
-    cv2.imwrite('renders/slopes/labeled/slope_%s_labeled.png' % name, result_pil)
+    ensure_dir('outputs/images/slope_%s_labeled.png' % name)
+    cv2.imwrite('outputs/images/slope_%s_labeled.png' % name, result_pil)
 
     print("Vertical text images created successfully!")

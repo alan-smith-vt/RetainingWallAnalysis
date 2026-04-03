@@ -105,17 +105,16 @@ def printf(s):
 
 
 if __name__ == "__main__":
-    target = "displacements"
-    printf("Target: %s" % target)
-    saveLoc = "renders/elevations/"
+    printf("Target: density analysis")
+    saveLoc = "outputs/images/"
 
-    files = glob.glob("pointClouds/unrolled/%s/*0.1.ply" % target)
+    files = glob.glob("outputs/point_clouds/unrolled/displacement_*0.1.ply")
 
     for i in tqdm(range(len(files)), desc="Processing point clouds"):
         file = files[i]
 
-        filename = file.split('/')[-1].replace('.ply', '_density.ply')
-        save_path = saveLoc + filename
+        filename = os.path.basename(file).replace('.ply', '_density.ply')
+        save_path = "outputs/point_clouds/unrolled/" + filename
 
         pc_colored, densities = process_point_cloud_with_density(
             file,

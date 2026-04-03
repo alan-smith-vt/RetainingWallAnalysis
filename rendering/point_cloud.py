@@ -194,10 +194,25 @@ def get_station_ranges(points, x_axis):
     return ranges
 
 
+# Map RENDER_TARGET keyword to glob pattern and file prefix
+TARGET_GLOB = {
+    "slope": "outputs/point_clouds/unrolled/slope_*.ply",
+    "slope_threshold": "outputs/point_clouds/unrolled/slope_threshold_*.ply",
+    "displacement": "outputs/point_clouds/unrolled/displacement_*.ply",
+    "new_slope": "outputs/point_clouds/unrolled/new_slope_*.ply",
+    "expected_slope": "outputs/point_clouds/unrolled/expected_slope_*.ply",
+    "cross_section": "outputs/point_clouds/unrolled/cross_section_*.ply",
+}
+
+saveLoc = "outputs/images/"
+
 for target in [RENDER_TARGET]:
     printf("Target: %s" % target)
-    saveLoc = "renders/%s/" % target
-    files = glob.glob("pointClouds/unrolled/%s/*.ply" % target)
+    glob_pattern = TARGET_GLOB.get(target)
+    if glob_pattern is None:
+        printf("Unknown target: %s" % target)
+        continue
+    files = glob.glob(glob_pattern)
     for i in tqdm(range(len(files))):
         file = files[i]
         pc_source = o3d.t.io.read_point_cloud(file)
@@ -206,13 +221,13 @@ for target in [RENDER_TARGET]:
 
         # Recompute colors from scalar field if present
         scalars = read_ply_scalar(file)
-        if scalars is not None and target in ("slopes", "slopes/thresholds/"):
+        if scalars is not None and target in ("slope", "slope_threshold"):
             printf("Recomputing slope colors from scalar field")
             colors = scalar_to_colors_slope(scalars)
-        elif scalars is not None and target == "new_slopes":
+        elif scalars is not None and target == "new_slope":
             printf("Recomputing new_slope colors from scalar field")
             colors = scalar_to_colors_deviation(scalars)
-        elif scalars is not None and target == "displacements":
+        elif scalars is not None and target == "displacement":
             printf("Recomputing displacement colors from scalar field")
             colors = scalar_to_colors_displacement(scalars)
         else:
@@ -223,26 +238,26 @@ for target in [RENDER_TARGET]:
         x_axis = 0
         y_axis = 2
         z_axis = 1
-        if target == "crossSections":
+        if target == "cross_section":
             x_axis = 1
             y_axis = 2
             z_axis = 0
-        if target == "displacements":
+        if target == "displacement":
             sz = MARKER_SIZE_DISPLACEMENTS
-        elif target == "slopes" or "slopes/thresholds/":
+        elif target in ("slope", "slope_threshold"):
             sz = MARKER_SIZE_SLOPES
         else:
             sz = MARKER_SIZE_DEFAULT
 
-        if target == "crossSections":
-            name = file[-5:-4]
+        # Extract name from filename (strip directory and extension)
+        basename = os.path.splitext(os.path.basename(file))[0]
+
+        if target == "cross_section":
             res = render_point_cloud(points, colors, target, x_axis, y_axis, z_axis, sz)
             res = cv2.flip(res, 1)
-            ensure_dir('%s%s.png' % (saveLoc, name))
-            cv2.imwrite('%s%s.png' % (saveLoc, name), res)
+            ensure_dir('%s%s.png' % (saveLoc, basename))
+            cv2.imwrite('%s%s.png' % (saveLoc, basename), res)
         else:
-            pattern = r'unrolled_(\d+_-?\d+\.\d+(?:_\d+\.\d+)?)\.ply$'
-            name = re.search(pattern, file).group(1)
             station_ranges = get_station_ranges(points, x_axis)
             if station_ranges:
                 full_extents = np.max(points, axis=0)
@@ -258,9 +273,9 @@ for target in [RENDER_TARGET]:
                     sub_extents = np.max(sub_points, axis=0)
                     sub_extents[y_axis] = full_extents[y_axis]
                     res = render_point_cloud(sub_points, sub_colors, target, x_axis, y_axis, z_axis, sz, extents=sub_extents)
-                    ensure_dir('%s%s_%s.png' % (saveLoc, name, station_label))
-                    cv2.imwrite('%s%s_%s.png' % (saveLoc, name, station_label), res)
+                    ensure_dir('%s%s_%s.png' % (saveLoc, basename, station_label))
+                    cv2.imwrite('%s%s_%s.png' % (saveLoc, basename, station_label), res)
             else:
                 res = render_point_cloud(points, colors, target, x_axis, y_axis, z_axis, sz)
-                ensure_dir('%s%s.png' % (saveLoc, name))
-                cv2.imwrite('%s%s.png' % (saveLoc, name), res)
+                ensure_dir('%s%s.png' % (saveLoc, basename))
+                cv2.imwrite('%s%s.png' % (saveLoc, basename), res)

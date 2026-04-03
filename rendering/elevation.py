@@ -99,10 +99,9 @@ def savePoints(points, filePath, colors=None):
 
 # ── Main execution ──────────────────────────────────────────────────────────
 
-target = "displacements"
-printf("Target: %s" % target)
-saveLoc = "renders/elevations/"
-files = glob.glob("pointClouds/unrolled/%s/*0.1.ply" % target)
+printf("Target: elevation profiles")
+saveLoc = "outputs/images/"
+files = glob.glob("outputs/point_clouds/unrolled/displacement_*0.1.ply")
 for i in tqdm(range(len(files))):
     file = files[i]
     pc_source = o3d.t.io.read_point_cloud(file)
@@ -133,11 +132,11 @@ for i in tqdm(range(len(files))):
     z_axis = 1
     sz = ELEVATION_MARKER_SIZE
 
-    pattern = r'unrolled_(\d+_-?\d+\.\d+(?:_\d+\.\d+)?)\.ply$'
+    pattern = r'displacement_(\d+_-?\d+\.\d+(?:_\d+\.\d+)?)\.ply$'
     name = re.search(pattern, file).group(1)
     points_save = points.copy()
     points_save[:, 1] = points_save[:, 1] * 0
-    savePoints(points_save, "exagerated_%s.ply" % name)
+    savePoints(points_save, "outputs/point_clouds/unrolled/elevation_exaggerated_%s.ply" % name)
 
     extents = np.max(points_og_zeroed, axis=0)
     extents[2] = delta_z * 2 * scale
@@ -158,9 +157,9 @@ for i in tqdm(range(len(files))):
             sub_extents[x_axis] = end_m - start_m
             station_label = "%d+%02d_to_%d+%02d" % (start_ft // 100, start_ft % 100, end_ft // 100, end_ft % 100)
             res = projectToImage1000_color(sub_points, sub_extents, sub_colors, x_axis, y_axis, z_axis, sz=sz)
-            ensure_dir('%s%s_%s_elevation.png' % (saveLoc, name, station_label))
-            cv2.imwrite('%s%s_%s_elevation.png' % (saveLoc, name, station_label), res)
+            ensure_dir('%selevation_%s_%s.png' % (saveLoc, name, station_label))
+            cv2.imwrite('%selevation_%s_%s.png' % (saveLoc, name, station_label), res)
     else:
         res = projectToImage1000_color(points, extents, colors, x_axis, y_axis, z_axis, sz=sz)
-        ensure_dir('%s%s_elevation.png' % (saveLoc, name))
-        cv2.imwrite('%s%s_elevation.png' % (saveLoc, name), res)
+        ensure_dir('%selevation_%s.png' % (saveLoc, name))
+        cv2.imwrite('%selevation_%s.png' % (saveLoc, name), res)

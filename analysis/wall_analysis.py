@@ -556,35 +556,35 @@ if __name__ == '__main__':
             points_temp = []
             colors_temp = []
             for k in range(len(pc_slices_rotated)):
-                pts, cols = getCrossSection(pc_slices_rotated[k], lines_rotated[k], "pointClouds/crossSections/wall_%d/section_%d.ply" % (wall_id, k), k, value_to_rgb_jet(slope_values[k][0])[:3])
+                pts, cols = getCrossSection(pc_slices_rotated[k], lines_rotated[k], "outputs/point_clouds/original/cross_section_%d_%d.ply" % (wall_id, k), k, value_to_rgb_jet(slope_values[k][0])[:3])
                 points_temp.append(pts)
                 colors_temp.append(cols)
             pts = np.vstack(points_temp)
             cols = np.vstack(colors_temp)
-            savePoints(pts, "pointClouds/unrolled/crossSections/wall_%d.ply" % wall_id, colors=cols)
+            savePoints(pts, "outputs/point_clouds/unrolled/cross_section_%d.ply" % wall_id, colors=cols)
 
             if thresh is None:
-                savePoints(pc_slices, "pointClouds/displacements/pc_slice_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors,
+                savePoints(pc_slices, "outputs/point_clouds/original/displacement_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors,
                            scalars={'displacement': pc_slice_displacements})
-                savePoints(lines, "pointClouds/slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors,
+                savePoints(lines, "outputs/point_clouds/original/slope_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors,
                            scalars={'slope': line_scalars})
-                ensure_dir("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing))
-                np.savetxt("renders/slopes/slope_%d_%.1f.csv" % (wall_id, spacing), slope_values, delimiter=",", fmt='%.6f')
-                savePoints(new_slope_lines_all, "pointClouds/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors,
+                ensure_dir("outputs/images/slope_%d_%.1f.csv" % (wall_id, spacing))
+                np.savetxt("outputs/images/slope_%d_%.1f.csv" % (wall_id, spacing), slope_values, delimiter=",", fmt='%.6f')
+                savePoints(new_slope_lines_all, "outputs/point_clouds/original/new_slope_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors,
                            scalars={'slope_deviation': new_slope_scalars})
-                savePoints(expected_slope_lines_all, "pointClouds/expected_slopes/line_%d_%.1f.ply" % (wall_id, spacing))
+                savePoints(expected_slope_lines_all, "outputs/point_clouds/original/expected_slope_%d_%.1f.ply" % (wall_id, spacing))
 
-                savePoints(pc_slices_unrolled, "pointClouds/unrolled/displacements/pc_slices_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors,
+                savePoints(pc_slices_unrolled, "outputs/point_clouds/unrolled/displacement_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors,
                            scalars={'displacement': pc_slice_displacements})
-                savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors,
+                savePoints(lines_unrolled, "outputs/point_clouds/unrolled/slope_%d_%.1f.ply" % (wall_id, spacing), colors=line_colors,
                            scalars={'slope': line_scalars})
                 new_slope_lines_unrolled = unrollSlices([nsr.copy() for nsr in new_slope_lines_rotated], spacing)
-                savePoints(new_slope_lines_unrolled, "pointClouds/unrolled/new_slopes/line_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors,
+                savePoints(new_slope_lines_unrolled, "outputs/point_clouds/unrolled/new_slope_%d_%.1f.ply" % (wall_id, spacing), colors=new_slope_colors,
                            scalars={'slope_deviation': new_slope_scalars})
                 expected_slope_lines_unrolled = unrollSlices([esr.copy() for esr in expected_slope_lines_rotated], spacing)
-                savePoints(expected_slope_lines_unrolled, "pointClouds/unrolled/expected_slopes/line_%d_%.1f.ply" % (wall_id, spacing))
+                savePoints(expected_slope_lines_unrolled, "outputs/point_clouds/unrolled/expected_slope_%d_%.1f.ply" % (wall_id, spacing))
             else:
-                savePoints(lines_unrolled, "pointClouds/unrolled/slopes/lines_unrolled_%d_%3.3f_%.1f.ply" % (wall_id, thresh, spacing), colors=line_colors,
+                savePoints(lines_unrolled, "outputs/point_clouds/unrolled/slope_threshold_%d_%3.3f_%.1f.ply" % (wall_id, thresh, spacing), colors=line_colors,
                            scalars={'slope': line_scalars})
 
             printf("Wall %d complete" % wall_id)

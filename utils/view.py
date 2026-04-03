@@ -49,12 +49,12 @@ new_height = int(height * scale_factor)
 
 resized_image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
 
-ensure_dir('renders/wall_%d_dwg.png' % wall_id)
-cv2.imwrite('renders/wall_%d_dwg.png' % wall_id, resized_image)
+ensure_dir('outputs/images/wall_%d_dwg.png' % wall_id)
+cv2.imwrite('outputs/images/wall_%d_dwg.png' % wall_id, resized_image)
 
 print(f"Original size: {width} x {height}")
 print(f"New size: {new_width} x {new_height}")
 print(f"Scale factor: {scale_factor:.4f}")
 
 display_image(resized_image)
-display_image(cv2.imread("renders/displacements/%d.png" % wall_id))
+display_image(cv2.imread("outputs/images/displacement_%d.png" % wall_id))

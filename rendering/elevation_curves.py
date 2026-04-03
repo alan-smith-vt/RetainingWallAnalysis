@@ -72,8 +72,8 @@ def projectToImage1000_color(points, xyExtents, colors, x_axis, y_axis, z_axis, 
 
 # ── Main execution ──────────────────────────────────────────────────────────
 
-saveLoc = "renders/elevations/curves/"
-files = glob.glob("pointClouds/unrolled/elevations/curves/*.ply")
+saveLoc = "outputs/images/"
+files = glob.glob("outputs/point_clouds/unrolled/elevation_curve_*.ply")
 for i in tqdm(range(len(files))):
     file = files[i]
     pc_source = o3d.t.io.read_point_cloud(file)
@@ -89,7 +89,8 @@ for i in tqdm(range(len(files))):
     z_axis = 1
     sz = CURVE_MARKER_SIZE
 
-    name = file[-5]
+    basename = os.path.splitext(os.path.basename(file))[0]  # e.g. elevation_curve_1
+    name = basename.replace("elevation_curve_", "")
     points_save = points.copy()
     points_save[:, 1] = points_save[:, 1] * 0
 
@@ -114,9 +115,9 @@ for i in tqdm(range(len(files))):
             sub_extents[x_axis] = end_m - start_m
             station_label = "%d+%02d_to_%d+%02d" % (start_ft // 100, start_ft % 100, end_ft // 100, end_ft % 100)
             res = projectToImage1000_color(sub_points, sub_extents, sub_colors, x_axis, y_axis, z_axis, sz=sz)
-            ensure_dir('%s%s_%s_elevation.png' % (saveLoc, name, station_label))
-            cv2.imwrite('%s%s_%s_elevation.png' % (saveLoc, name, station_label), res)
+            ensure_dir('%selevation_curve_%s_%s.png' % (saveLoc, name, station_label))
+            cv2.imwrite('%selevation_curve_%s_%s.png' % (saveLoc, name, station_label), res)
     else:
         res = projectToImage1000_color(points, extents, colors, x_axis, y_axis, z_axis, sz=sz)
-        ensure_dir('%s%s_elevation.png' % (saveLoc, name))
-        cv2.imwrite('%s%s_elevation.png' % (saveLoc, name), res)
+        ensure_dir('%selevation_curve_%s.png' % (saveLoc, name))
+        cv2.imwrite('%selevation_curve_%s.png' % (saveLoc, name), res)

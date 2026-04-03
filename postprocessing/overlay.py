@@ -83,8 +83,8 @@ def overlay_images(base_image_path, overlay_image_path, x_offset, y_offset, tran
 
 for wall_id in [1, 2, 3]:
     scale = "0.1"
-    base_path = "renders/wall_%d_dwg.png" % wall_id
-    overlay_path = "renders/elevations/%d_%s_elevation.png" % (wall_id, scale)
+    base_path = "outputs/images/wall_%d_dwg.png" % wall_id
+    overlay_path = "outputs/images/elevation_%d_%s.png" % (wall_id, scale)
 
     base_img = cv2.imread(base_path)
     overlay_img = cv2.imread(overlay_path)
@@ -98,6 +98,6 @@ for wall_id in [1, 2, 3]:
     result_image = overlay_images(base_path, overlay_path, x_offset, y_offset)
 
     if result_image is not None:
-        ensure_dir("renders/overlays/elevations/wall_%d_overlay.jpg" % wall_id)
-        cv2.imwrite("renders/overlays/elevations/wall_%d_overlay.jpg" % wall_id, result_image)
+        ensure_dir("outputs/images/wall_%d_elevation_overlay.jpg" % wall_id)
+        cv2.imwrite("outputs/images/wall_%d_elevation_overlay.jpg" % wall_id, result_image)
         print("Wall %d, Overlaid image saved" % wall_id)

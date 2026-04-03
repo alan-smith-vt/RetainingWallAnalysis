@@ -18,7 +18,7 @@ def ensure_dir(filepath):
 
 imgs = []
 for wall_id in [1, 2, 3]:
-    file = "renders/overlays/elevations/%d.png" % wall_id
+    file = "outputs/images/elevation_overlay_%d.png" % wall_id
     img = cv2.imread(file, cv2.IMREAD_UNCHANGED)
     imgs.append(img)
 
@@ -36,5 +36,5 @@ for img in imgs:
 
 # Stack and save
 stacked = cv2.vconcat(padded_imgs)
-ensure_dir("renders/overlays/elevations/combined.png")
-cv2.imwrite("renders/overlays/elevations/combined.png", stacked)
+ensure_dir("outputs/images/elevation_overlay_combined.png")
+cv2.imwrite("outputs/images/elevation_overlay_combined.png", stacked)

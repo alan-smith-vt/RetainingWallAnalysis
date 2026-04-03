@@ -77,7 +77,9 @@ RENDER_RESOLUTION = 100         # Pixels per meter equivalent
 MARKER_SIZE_DEFAULT = 250
 MARKER_SIZE_DISPLACEMENTS = 500
 MARKER_SIZE_SLOPES = 1000
-RENDER_TARGET = "slopes/thresholds/"  # Which target set to render
+RENDER_TARGET = "slope_threshold"     # Which target set to render
+                                      # Options: "slope", "slope_threshold",
+                                      # "displacement", "new_slope", "expected_slope"
 
 # ---------------------------------------------------------------------------
 # Elevation rendering (rendering/elevation.py)
@@ -168,15 +170,7 @@ WALL_SCALE_FACTORS = {
 # ---------------------------------------------------------------------------
 # Output directories
 # ---------------------------------------------------------------------------
-OUTPUT_DIR_DISPLACEMENTS = "pointClouds/displacements"
-OUTPUT_DIR_SLOPES = "pointClouds/slopes"
-OUTPUT_DIR_NEW_SLOPES = "pointClouds/new_slopes"
-OUTPUT_DIR_UNROLLED = "pointClouds/unrolled"
-OUTPUT_DIR_CROSS_SECTIONS = "pointClouds/unrolled/crossSections"
-OUTPUT_DIR_RENDERS = "renders"
-OUTPUT_DIR_ELEVATIONS = "renders/elevations"
-OUTPUT_DIR_ELEVATION_CURVES = "renders/elevations/curves"
-OUTPUT_DIR_SLOPE_RENDERS = "renders/slopes"
-OUTPUT_DIR_SLOPE_LABELED = "renders/slopes/labeled"
-OUTPUT_DIR_OVERLAYS = "renders/overlays/elevations"
+OUTPUT_DIR_PC_ORIGINAL = "outputs/point_clouds/original"
+OUTPUT_DIR_PC_UNROLLED = "outputs/point_clouds/unrolled"
+OUTPUT_DIR_IMAGES = "outputs/images"
 OUTPUT_DIR_EXCEL = "excel_data"

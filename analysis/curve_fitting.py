@@ -135,9 +135,10 @@ def sortAndSlice(npPoints, window_thickness, step_size, axis):
 
 # ── Main execution ──────────────────────────────────────────────────────────
 
-files = glob.glob("pointClouds/unrolled/elevations/cuts/*0.1.ply")
+files = glob.glob("outputs/point_clouds/unrolled/displacement_*0.1.ply")
 for file in files:
-    wall_id = file[-9]
+    # Extract wall_id from filename like displacement_1_0.1.ply
+    wall_id = os.path.basename(file).split("_")[1]
     pc_source = o3d.t.io.read_point_cloud(file)
     points = pc_source.point.positions.numpy()
     x_min = np.min(points, axis=0)[0]
@@ -153,7 +154,7 @@ for file in files:
         peaks.append(np.array([x_min + step * i, 0, peak]))
     peaks.append(np.array([x_min + step * len(slices) - 1, 0, peak]))
     peaks = np.vstack(peaks)
-    savePoints(peaks, "pointClouds/unrolled/elevations/curves/%s_peaks.ply" % wall_id, color=np.array([255, 0, 255], dtype=np.uint8))
+    savePoints(peaks, "outputs/point_clouds/unrolled/elevation_curve_%s_peaks.ply" % wall_id, color=np.array([255, 0, 255], dtype=np.uint8))
 
     x = peaks[:, 0]
     y = peaks[:, 2]
@@ -175,7 +176,7 @@ for file in files:
     peaks_smooth[:, 0] = x_smooth
     peaks_smooth[:, 2] = y_smooth
 
-    savePoints(peaks_smooth, "pointClouds/unrolled/elevations/curves/%s.ply" % wall_id, color=np.array([0, 0, 255], dtype=np.uint8))
+    savePoints(peaks_smooth, "outputs/point_clouds/unrolled/elevation_curve_%s.ply" % wall_id, color=np.array([0, 0, 255], dtype=np.uint8))
 
     x_sample = np.arange(0, np.max(x), 1)
     x_sample = x_sample[x_sample > np.min(x)]
