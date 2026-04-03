@@ -246,7 +246,7 @@ def _draw_slope_bar(ax):
                 ha='center', fontsize=21, color='green', fontweight='bold')
     ax.annotate('Less batter', xy=(0.95, 1.1), xycoords='axes fraction',
                 ha='center', fontsize=21, color='red', fontweight='bold')
-    ax.set_xlabel(f"Piecewise Slope (expected: {expected_pct:.1f}%, range: \u00b1{r:.1f}%)",
+    ax.set_xlabel(f"Slope (expected: {expected_pct:.1f}%, range: \u00b1{r:.1f}%)",
                   fontsize=22, fontweight='bold', labelpad=15)
 
 
