@@ -148,41 +148,67 @@ def detect_peaks_windowed(raster_hz, x_edges, z_edges):
 # ── Tracking ────────────────────────────────────────────────────────────────
 
 def link_peaks_to_tracks(detections):
-    """Link adjacent peaks into tracks using Z-tolerance matching.
+    """Link peaks between adjacent windows only.
 
-    For each consecutive pair of windows, match peaks that are within
-    MATCH_TOLERANCE in Z. No block height assumptions.
+    Each window's peaks are matched against the previous window's peaks.
+    A track extends only if the very next window has a match within
+    MATCH_TOLERANCE in Z. If a window has no match, the track ends.
+    Unmatched peaks start new tracks.
 
     Returns list of tracks, each a list of (x, z) tuples.
     """
-    tracks = []       # list of [(x, z), ...]
-    active_z = []     # current Z for each active track
+    if not detections:
+        return []
 
-    for cx, _, _, peak_zs in detections:
-        used_t, used_p = set(), set()
+    finished_tracks = []
 
-        if active_z:
-            az = np.array(active_z)
-            dists = np.abs(az[:, None] - peak_zs[None, :])
+    # Initialize with first window's peaks
+    # Each active track is just a list of (x, z) points
+    cx0, _, _, pz0 = detections[0]
+    active = [[(cx0, z)] for z in pz0]
 
+    for det_idx in range(1, len(detections)):
+        cx, _, _, peak_zs = detections[det_idx]
+        new_active = []
+        used_p = set()
+
+        if active and len(peak_zs) > 0:
+            # Build distance matrix: active tracks vs current peaks
+            active_z = np.array([t[-1][1] for t in active])
+            dists = np.abs(active_z[:, None] - peak_zs[None, :])
+
+            used_t = set()
             for fi in np.argsort(dists.ravel()):
                 ti, pi = divmod(int(fi), len(peak_zs))
                 if ti in used_t or pi in used_p:
                     continue
                 if dists[ti, pi] > MATCH_TOLERANCE:
                     break
-                tracks[ti].append((cx, peak_zs[pi]))
-                active_z[ti] = peak_zs[pi]
+                # Extend this track
+                active[ti].append((cx, peak_zs[pi]))
+                new_active.append(active[ti])
                 used_t.add(ti)
                 used_p.add(pi)
 
+            # Unmatched active tracks are finished
+            for ti in range(len(active)):
+                if ti not in used_t:
+                    finished_tracks.append(active[ti])
+        else:
+            # No peaks or no active tracks — all active tracks end
+            finished_tracks.extend(active)
+
+        # Unmatched peaks start new tracks
         for pi in range(len(peak_zs)):
             if pi not in used_p:
-                tracks.append([(cx, peak_zs[pi])])
-                active_z.append(peak_zs[pi])
+                new_active.append([(cx, peak_zs[pi])])
 
-    # Filter by minimum length
-    return [t for t in tracks if len(t) >= MIN_TRACK_PEAKS]
+        active = new_active
+
+    # Flush remaining active tracks
+    finished_tracks.extend(active)
+
+    return [t for t in finished_tracks if len(t) >= MIN_TRACK_PEAKS]
 
 
 # ── Plot ────────────────────────────────────────────────────────────────────
