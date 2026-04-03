@@ -24,6 +24,7 @@ from scipy.signal import find_peaks
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import splprep, splev
 import glob
+from tqdm import tqdm
 
 from config import FEET_TO_METERS
 
@@ -276,7 +277,7 @@ def assign_points_to_tracks(points, fitted_tracks):
     spline_dzdx = np.full(N, np.nan)
     displacement = np.full(N, np.nan)
 
-    for i, track in enumerate(fitted_tracks):
+    for i, track in enumerate(tqdm(fitted_tracks, desc="  Assigning points")):
         # Cheap bounding box filter: X range AND Z within mean_z ± (influence + max spline deviation)
         z_margin = INFLUENCE_HALF_Z + np.ptp(track['z'])  # generous Z bound
         candidates = ((px >= track['x_min']) & (px <= track['x_max']) &
