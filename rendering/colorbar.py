@@ -274,7 +274,7 @@ def create_all_colorbars(save_dir="outputs/images/"):
 
     combined_path = os.path.join(save_dir, "legend_colorbars.png")
 
-    fig, axes = plt.subplots(3, 1, figsize=(5, 10))
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8))
 
     for ax_idx, create_fn in enumerate([
         _draw_displacement_bar,
@@ -307,12 +307,22 @@ def _draw_displacement_bar(ax):
         f"-{max_neg_in / 2:.1f}\"",
         f"-{max_neg_in:.1f}\"",
     ]
-    depth = _staggered_ticks(ax, ticks, labels, fontsize=12, min_gap_pts=70,
-                             row_height=18, base_tick=6)
-    ax.annotate(f"Displacement from Expected Profile (batter: {expected_pct:.1f}%)",
-                xy=(0.5, -(depth + 8)),
-                xycoords=('axes fraction', 'axes points'),
-                ha='center', va='top', fontsize=15, fontweight='bold')
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([])
+    for i, (t, label) in enumerate(zip(ticks, labels)):
+        is_low = (i % 2 == 1)
+        tick_len = 14 if is_low else 8
+        label_y = -tick_len - 14
+        ax.annotate('', xy=(t, 0), xytext=(t, -tick_len),
+                    xycoords=('data', 'axes points'),
+                    textcoords=('data', 'axes points'),
+                    arrowprops=dict(arrowstyle='-', color='k', lw=1))
+        ax.annotate(label, xy=(t, label_y),
+                    xycoords=('data', 'axes points'),
+                    ha='center', va='top', fontsize=12)
+    ax.tick_params(axis='x', length=0)
+    ax.set_xlabel(f"Displacement from Expected Profile (batter: {expected_pct:.1f}%)",
+                  fontsize=15, fontweight='bold', labelpad=50)
 
 
 def _draw_slope_bar(ax):
@@ -323,7 +333,7 @@ def _draw_slope_bar(ax):
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
     sm.set_array([])
-    plt.colorbar(sm, cax=ax, orientation='horizontal')
+    cbar = plt.colorbar(sm, cax=ax, orientation='horizontal')
 
     ticks = [0, 0.25, 0.5, 0.75, 1.0]
     labels = [
@@ -333,12 +343,11 @@ def _draw_slope_bar(ax):
         f"{expected_pct-r/2:.1f}%",
         f"{expected_pct-r:.1f}%",
     ]
-    depth = _staggered_ticks(ax, ticks, labels, fontsize=12, min_gap_pts=70,
-                             row_height=18, base_tick=6)
-    ax.annotate(f"Piecewise Slope (expected: {expected_pct:.1f}%, range: \u00b1{r:.1f}%)",
-                xy=(0.5, -(depth + 8)),
-                xycoords=('axes fraction', 'axes points'),
-                ha='center', va='top', fontsize=15, fontweight='bold')
+    cbar.set_ticks(ticks)
+    cbar.set_ticklabels(labels)
+    ax.tick_params(axis='x', labelsize=12)
+    ax.set_xlabel(f"Piecewise Slope (expected: {expected_pct:.1f}%, range: \u00b1{r:.1f}%)",
+                  fontsize=15, fontweight='bold', labelpad=15)
 
 
 def _draw_new_slope_bar(ax):
@@ -349,7 +358,7 @@ def _draw_new_slope_bar(ax):
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
     sm.set_array([])
-    plt.colorbar(sm, cax=ax, orientation='horizontal')
+    cbar = plt.colorbar(sm, cax=ax, orientation='horizontal')
 
     ticks = [0, 0.25, 0.5, 0.75, 1.0]
     labels = [
@@ -359,12 +368,11 @@ def _draw_new_slope_bar(ax):
         f"-{r/2:.1f}%",
         f"-{r:.1f}% dev",
     ]
-    depth = _staggered_ticks(ax, ticks, labels, fontsize=12, min_gap_pts=70,
-                             row_height=18, base_tick=6)
-    ax.annotate(f"Top-of-Wall Deviation from Expected ({expected_pct:.1f}%)",
-                xy=(0.5, -(depth + 8)),
-                xycoords=('axes fraction', 'axes points'),
-                ha='center', va='top', fontsize=15, fontweight='bold')
+    cbar.set_ticks(ticks)
+    cbar.set_ticklabels(labels)
+    ax.tick_params(axis='x', labelsize=12)
+    ax.set_xlabel(f"Top-of-Wall Deviation from Expected ({expected_pct:.1f}%)",
+                  fontsize=15, fontweight='bold', labelpad=15)
 
 
 if __name__ == "__main__":
