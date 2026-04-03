@@ -125,7 +125,7 @@ for i in tqdm(range(len(files))):
     colors = colors[inds]
 
     colors = colors.reshape(-1, 3)
-    colors[colors[:, 1] > 1] = np.array([1, 1, 1])
+    colors = np.clip(colors, 0, 1)
 
     x_axis = 0
     y_axis = 2
