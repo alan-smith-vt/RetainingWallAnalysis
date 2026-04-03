@@ -55,11 +55,37 @@ def ensure_dir(path):
 
 # ── Pipeline ────────────────────────────────────────────────────────────────
 
-def compute_normals(points, knn):
+NORMALS_CACHE_DIR = "outputs/point_clouds/unrolled"
+
+
+def get_normals(points, wall_id, knn):
+    """Load cached normals if available, otherwise compute and cache."""
+    cache_path = os.path.join(NORMALS_CACHE_DIR, "normals_%s.ply" % wall_id)
+
+    if os.path.exists(cache_path):
+        print("  Loading cached normals from %s" % cache_path)
+        pc = o3d.t.io.read_point_cloud(cache_path)
+        cached_pts = pc.point.positions.numpy()
+        if len(cached_pts) == len(points):
+            return pc.point.normals.numpy()
+        print("  Cache stale (%d vs %d points), recomputing" % (
+            len(cached_pts), len(points)))
+
+    print("  Computing normals (knn=%d)..." % knn)
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=knn))
-    return np.asarray(pcd.normals)
+    normals = np.asarray(pcd.normals)
+
+    # Cache for reuse
+    os.makedirs(NORMALS_CACHE_DIR, exist_ok=True)
+    pcd_t = o3d.t.geometry.PointCloud()
+    pcd_t.point.positions = points.astype(np.float32)
+    pcd_t.point.normals = normals.astype(np.float32)
+    o3d.t.io.write_point_cloud(cache_path, pcd_t)
+    print("  Cached normals to %s" % cache_path)
+
+    return normals
 
 
 def rasterize(points, normals, resolution):
@@ -162,24 +188,25 @@ def main():
         print(f"\n=== Joint Debug: Wall {wall_id} ===")
 
         pc = o3d.t.io.read_point_cloud(file)
-        points = pc.point.positions.numpy()
-        print(f"  Full cloud: {len(points)} points")
+        points_full = pc.point.positions.numpy()
+        print(f"  Full cloud: {len(points_full)} points")
+
+        # Get normals for full cloud (cached)
+        normals_full = get_normals(points_full, wall_id, NORMAL_KNN)
 
         # Crop to debug region
         center_x = DEBUG_CENTER_X
         if center_x is None:
-            center_x = (points[:, 0].min() + points[:, 0].max()) / 2
-        mask = ((points[:, 0] >= center_x - DEBUG_RANGE) &
-                (points[:, 0] <= center_x + DEBUG_RANGE))
-        points = points[mask]
+            center_x = (points_full[:, 0].min() + points_full[:, 0].max()) / 2
+        mask = ((points_full[:, 0] >= center_x - DEBUG_RANGE) &
+                (points_full[:, 0] <= center_x + DEBUG_RANGE))
+        points = points_full[mask]
+        normals = normals_full[mask]
         print(f"  Debug region: X={center_x:.1f} +/- {DEBUG_RANGE:.1f}m -> {len(points)} points")
 
         if len(points) == 0:
             print("  No points, skipping.")
             continue
-
-        print("  Computing normals...")
-        normals = compute_normals(points, NORMAL_KNN)
 
         print("  Rasterizing...")
         raster_hz, x_edges, z_edges = rasterize(points, normals, RASTER_RESOLUTION)
