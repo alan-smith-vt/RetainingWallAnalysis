@@ -88,9 +88,11 @@ RENDER_RESOLUTION = 100         # Pixels per meter equivalent
 MARKER_SIZE_DEFAULT = 250
 MARKER_SIZE_DISPLACEMENTS = 500
 MARKER_SIZE_SLOPES = 1000
+MARKER_SIZE_JOINTS = 500
 RENDER_TARGET = "slope_threshold"     # Which target set to render
                                       # Options: "slope", "slope_threshold",
-                                      # "displacement", "new_slope", "expected_slope"
+                                      # "displacement", "new_slope", "expected_slope",
+                                      # "joints"
 
 # ---------------------------------------------------------------------------
 # Elevation rendering (rendering/elevation.py)

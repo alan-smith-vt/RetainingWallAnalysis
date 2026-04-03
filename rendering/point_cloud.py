@@ -24,6 +24,10 @@ from config import (
     FEET_TO_METERS,
 )
 try:
+    from config import MARKER_SIZE_JOINTS
+except ImportError:
+    MARKER_SIZE_JOINTS = MARKER_SIZE_DEFAULT
+try:
     from config import MAX_DISPLACEMENT_POSITIVE, MAX_DISPLACEMENT_NEGATIVE
 except ImportError:
     MAX_DISPLACEMENT_POSITIVE = None
@@ -176,6 +180,14 @@ def scalar_to_colors_displacement(scalars):
     return cmap(mapped)[:, :3]
 
 
+def scalar_to_colors_joints(scalars):
+    """Map joint score (|Nz|, 0-1) to colors using 'hot' colormap.
+    High score (strong joint signal) = bright/white, low = dark/black."""
+    cmap = plt.cm.hot
+    normed = np.clip(scalars, 0, 1)
+    return cmap(normed)[:, :3]
+
+
 def scalar_to_colors_deviation(scalars):
     """Map slope deviation scalar values to colors (already deviation from expected).
     Supports asymmetric ranges via SLOPE_RANGE_POSITIVE/NEGATIVE."""
@@ -261,6 +273,7 @@ TARGET_GLOB = {
     "new_slope": "outputs/point_clouds/unrolled/new_slope_*.ply",
     "expected_slope": "outputs/point_clouds/unrolled/expected_slope_*.ply",
     "cross_section": "outputs/point_clouds/unrolled/cross_section_*.ply",
+    "joints": "outputs/point_clouds/unrolled/joints_*.ply",
 }
 
 saveLoc = "outputs/images/"
@@ -289,6 +302,9 @@ for target in [RENDER_TARGET]:
         elif scalars is not None and target == "displacement":
             printf("Recomputing displacement colors from scalar field")
             colors = scalar_to_colors_displacement(scalars)
+        elif scalars is not None and target == "joints":
+            printf("Recomputing joint score colors from scalar field")
+            colors = scalar_to_colors_joints(scalars)
         else:
             colors = pc_source.point.colors.numpy()
             colors = colors.reshape(-1, 3)
@@ -305,6 +321,8 @@ for target in [RENDER_TARGET]:
             sz = MARKER_SIZE_DISPLACEMENTS
         elif target in ("slope", "slope_threshold"):
             sz = MARKER_SIZE_SLOPES
+        elif target == "joints":
+            sz = MARKER_SIZE_JOINTS
         else:
             sz = MARKER_SIZE_DEFAULT
 
