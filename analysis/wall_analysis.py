@@ -273,6 +273,10 @@ def process_slice(args):
     wall_height = z_max - z_min
     numSlopes = max(int(wall_height / v_step), 1)
 
+    if i == 0:
+        print(f"[DEBUG slice 0] slice_width={slice_width:.3f} slice_overlap={slice_overlap} h_step={h_step:.3f} n_h_steps={n_h_steps}")
+        print(f"[DEBUG slice 0] segLength={segLength} seg_overlap={seg_overlap} v_step={v_step:.3f} numSlopes={numSlopes} wall_height={wall_height:.3f}")
+
     piecewise_lines_unrotated = []
     piecewise_line_colors = []
     piecewise_lines_rotated = []
