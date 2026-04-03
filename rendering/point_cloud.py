@@ -16,10 +16,12 @@ import glob
 from io import BytesIO
 import cv2
 import re
+import struct
 from tqdm import tqdm
 from config import (
     RENDER_DPI, RENDER_RESOLUTION, RENDER_TARGET,
     MARKER_SIZE_DEFAULT, MARKER_SIZE_DISPLACEMENTS, MARKER_SIZE_SLOPES,
+    EXPECTED_WALL_SLOPE, SLOPE_COLORMAP_RANGE, MAX_DISPLACEMENT_FOR_COLORS,
     FEET_TO_METERS,
 )
 try:
@@ -86,6 +88,68 @@ def projectToImage1000_color(points, xyExtents, colors, x_axis, y_axis, z_axis, 
     return res
 
 
+def read_ply_scalar(filepath):
+    """Read the intensity scalar field from a PLY file, returns None if not present."""
+    with open(filepath, 'rb') as f:
+        # Parse header
+        properties = []
+        n_vertices = 0
+        while True:
+            line = f.readline().decode('ascii').strip()
+            if line == 'end_header':
+                break
+            if line.startswith('element vertex'):
+                n_vertices = int(line.split()[-1])
+            elif line.startswith('property'):
+                parts = line.split()
+                properties.append((parts[1], parts[2]))
+
+        # Check if intensity exists
+        has_intensity = any(name == 'intensity' for _, name in properties)
+        if not has_intensity:
+            return None
+
+        # Calculate byte offsets
+        type_sizes = {'float': 4, 'uchar': 1, 'double': 8, 'int': 4, 'short': 2}
+        type_formats = {'float': 'f', 'uchar': 'B', 'double': 'd', 'int': 'i', 'short': 'h'}
+        vertex_size = sum(type_sizes[t] for t, _ in properties)
+        intensity_offset = 0
+        for t, name in properties:
+            if name == 'intensity':
+                break
+            intensity_offset += type_sizes[t]
+
+        # Read all vertices and extract intensity
+        data = f.read(n_vertices * vertex_size)
+        scalars = np.zeros(n_vertices, dtype=np.float32)
+        for i in range(n_vertices):
+            offset = i * vertex_size + intensity_offset
+            scalars[i] = struct.unpack_from('f', data, offset)[0]
+        return scalars
+
+
+def scalar_to_colors_slope(scalars):
+    """Map slope scalar values to colors using config colormap params."""
+    cmap = plt.cm.jet
+    deviation = scalars - EXPECTED_WALL_SLOPE
+    mapped = np.clip((-deviation * 100) / SLOPE_COLORMAP_RANGE * 0.5 + 0.5, 0, 1)
+    return cmap(mapped)[:, :3]
+
+
+def scalar_to_colors_displacement(scalars):
+    """Map displacement scalar values to colors using config colormap params."""
+    cmap = plt.cm.jet
+    mapped = np.clip(-scalars / MAX_DISPLACEMENT_FOR_COLORS * 0.5 + 0.5, 0, 1)
+    return cmap(mapped)[:, :3]
+
+
+def scalar_to_colors_deviation(scalars):
+    """Map slope deviation scalar values to colors (already deviation from expected)."""
+    cmap = plt.cm.jet
+    mapped = np.clip((-scalars * 100) / SLOPE_COLORMAP_RANGE * 0.5 + 0.5, 0, 1)
+    return cmap(mapped)[:, :3]
+
+
 def upscale_image_resize(image, scale_factor=10):
     """Upscale image using cv2.resize with bicubic interpolation."""
     height, width = image.shape[:2]
@@ -127,10 +191,23 @@ for target in [RENDER_TARGET]:
         pc_source = o3d.t.io.read_point_cloud(file)
         pc_source = zero_pc(pc_source)
         points = pc_source.point.positions.numpy()
-        colors = pc_source.point.colors.numpy()
-        colors = colors.reshape(-1, 3)
-        if colors.max() > 1.0:
-            colors = colors / 255.0
+
+        # Recompute colors from scalar field if present
+        scalars = read_ply_scalar(file)
+        if scalars is not None and target in ("slopes", "slopes/thresholds/"):
+            printf("Recomputing slope colors from scalar field")
+            colors = scalar_to_colors_slope(scalars)
+        elif scalars is not None and target == "new_slopes":
+            printf("Recomputing new_slope colors from scalar field")
+            colors = scalar_to_colors_deviation(scalars)
+        elif scalars is not None and target == "displacements":
+            printf("Recomputing displacement colors from scalar field")
+            colors = scalar_to_colors_displacement(scalars)
+        else:
+            colors = pc_source.point.colors.numpy()
+            colors = colors.reshape(-1, 3)
+            if colors.max() > 1.0:
+                colors = colors / 255.0
         x_axis = 0
         y_axis = 2
         z_axis = 1
