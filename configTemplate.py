@@ -125,6 +125,10 @@ CURVE_SMOOTHING_FACTOR_1 = 5    # First-pass spline smoothing
 CURVE_SMOOTHING_FACTOR_2 = 1    # Second-pass spline smoothing
 CURVE_NUM_SMOOTH_POINTS = 1000  # Points along the smoothed spline
 
+# Debug settings (debug/curve_fitting_debug.py)
+CURVE_DEBUG_CENTER_X = None     # Meters along wall (None = use midpoint)
+CURVE_DEBUG_RANGE = 2.0         # ±meters around center
+
 # ---------------------------------------------------------------------------
 # Grid and label overlay (postprocessing/grid_labels.py)
 # ---------------------------------------------------------------------------
