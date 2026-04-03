@@ -289,10 +289,11 @@ def process_slice(args):
             continue
 
         # Re-generate the line geometry over the draw region only
-        # Scale point count proportionally to draw height so total output stays constant
+        # Use fixed density: ~50 points/meter vertically, ~100 lines/meter horizontally
         draw_height = draw_z2 - draw_z1
-        n_z = max(int(100 * draw_height / wall_height), 2)
-        n_x = max(int(100 * draw_height / wall_height), 2)
+        draw_width = abs(v2_rotated[0] - v1_rotated[0])
+        n_z = max(int(50 * draw_height), 2)
+        n_x = max(int(100 * draw_width), 2)
         z_draw = np.linspace(draw_z1, draw_z2, n_z)
         y_draw = slope_val * z_draw + intercept
         x_vals = np.linspace(v1_rotated[0], v2_rotated[0], n_x)
