@@ -392,70 +392,88 @@ def plot_joint_lines(raster_hz, x_edges, z_edges, tracks, output_path):
     print(f"  Saved: {output_path}")
 
 
-def plot_rotation(points, dzdx, track_idx, output_path):
-    """Color points by spline derivative (rotation/slope of joint)."""
+def _rasterize_values(points, values, track_idx, resolution, cmap_name, label,
+                      title, output_path):
+    """Rasterize point values to a 2D image using bincount averaging.
+
+    Much faster than plt.scatter for millions of points.
+    """
     assigned = track_idx >= 0
     if not np.any(assigned):
-        print("  No points assigned to tracks, skipping rotation plot.")
+        print(f"  No points assigned, skipping {label} plot.")
         return
+
+    px, pz = points[:, 0], points[:, 2]
+    x_min, x_max = px.min(), px.max()
+    z_min, z_max = pz.min(), pz.max()
+
+    x_edges = np.arange(x_min, x_max + resolution, resolution)
+    z_edges = np.arange(z_min, z_max + resolution, resolution)
+    nc, nr = len(x_edges) - 1, len(z_edges) - 1
+
+    # Raster of assigned values (average per cell)
+    a_px, a_pz = px[assigned], pz[assigned]
+    a_vals = values[assigned]
+    xi = np.clip(np.searchsorted(x_edges, a_px) - 1, 0, nc - 1)
+    zi = np.clip(np.searchsorted(z_edges, a_pz) - 1, 0, nr - 1)
+    flat = zi * nc + xi
+
+    val_sum = np.bincount(flat, weights=a_vals, minlength=nr * nc)
+    counts = np.bincount(flat, minlength=nr * nc)
+    m = counts > 0
+    raster = np.full(nr * nc, np.nan)
+    raster[m] = val_sum[m] / counts[m]
+    raster = raster.reshape(nr, nc)
+
+    # Also build an occupancy raster (all points) for background
+    all_xi = np.clip(np.searchsorted(x_edges, px) - 1, 0, nc - 1)
+    all_zi = np.clip(np.searchsorted(z_edges, pz) - 1, 0, nr - 1)
+    all_flat = all_zi * nc + all_xi
+    all_counts = np.bincount(all_flat, minlength=nr * nc).reshape(nr, nc)
+
+    # Render
+    x_c = (x_edges[:-1] + x_edges[1:]) / 2
+    z_c = (z_edges[:-1] + z_edges[1:]) / 2
+    extent = [x_c[0], x_c[-1], z_c[0], z_c[-1]]
+
+    vals_flat = a_vals[~np.isnan(a_vals)]
+    vmax = max(0.001, np.nanpercentile(np.abs(vals_flat), 95))
 
     fig, ax = plt.subplots(figsize=(16, 8))
 
-    # Plot unassigned points in dark gray
-    unassigned = ~assigned
-    if np.any(unassigned):
-        ax.scatter(points[unassigned, 0], points[unassigned, 2],
-                   c='#1a1a1a', s=0.1, alpha=0.3, rasterized=True)
+    # Dark background where points exist but no track assignment
+    bg = np.where(all_counts > 0, 0.08, np.nan)
+    ax.imshow(bg, aspect='auto', origin='lower', extent=extent,
+              cmap='gray', vmin=0, vmax=1, interpolation='nearest')
 
-    # Plot assigned points colored by dz/dx
-    vals = dzdx[assigned]
-    vmax = max(0.001, np.nanpercentile(np.abs(vals), 95))
-    sc = ax.scatter(points[assigned, 0], points[assigned, 2],
-                    c=vals, cmap='coolwarm', vmin=-vmax, vmax=vmax,
-                    s=0.5, alpha=0.7, rasterized=True)
-    plt.colorbar(sc, ax=ax, label='dZ/dX (rotation)', shrink=0.8)
+    # Colored overlay for assigned regions
+    cmap = plt.get_cmap(cmap_name).copy()
+    cmap.set_bad(alpha=0)
+    im = ax.imshow(raster, aspect='auto', origin='lower', extent=extent,
+                   cmap=cmap, vmin=-vmax, vmax=vmax, interpolation='nearest')
+    plt.colorbar(im, ax=ax, label=label, shrink=0.8)
 
     ax.set_xlabel("X — along wall (m)")
     ax.set_ylabel("Z — elevation (m)")
-    ax.set_title("Joint Rotation (dZ/dX from spline fit)")
-    ax.set_facecolor('#1a1a1a')
+    ax.set_title(title)
+    ax.set_facecolor('black')
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200)
+    fig.savefig(output_path, dpi=150)
     plt.close(fig)
     print(f"  Saved: {output_path}")
+
+
+def plot_rotation(points, dzdx, track_idx, output_path):
+    _rasterize_values(points, dzdx, track_idx, RASTER_RESOLUTION,
+                      'coolwarm', 'dZ/dX (rotation)',
+                      'Joint Rotation (dZ/dX from spline fit)', output_path)
 
 
 def plot_displacement(points, disp, track_idx, output_path):
-    """Color points by joint displacement (Z(x) - Z(x_start))."""
-    assigned = track_idx >= 0
-    if not np.any(assigned):
-        print("  No points assigned to tracks, skipping displacement plot.")
-        return
-
-    fig, ax = plt.subplots(figsize=(16, 8))
-
-    # Unassigned in dark gray
-    unassigned = ~assigned
-    if np.any(unassigned):
-        ax.scatter(points[unassigned, 0], points[unassigned, 2],
-                   c='#1a1a1a', s=0.1, alpha=0.3, rasterized=True)
-
-    # Assigned colored by displacement
-    vals = disp[assigned]
-    vmax = max(0.001, np.nanpercentile(np.abs(vals), 95))
-    sc = ax.scatter(points[assigned, 0], points[assigned, 2],
-                    c=vals, cmap='coolwarm', vmin=-vmax, vmax=vmax,
-                    s=0.5, alpha=0.7, rasterized=True)
-    plt.colorbar(sc, ax=ax, label='Displacement Z(x) - Z(start) (m)', shrink=0.8)
-
-    ax.set_xlabel("X — along wall (m)")
-    ax.set_ylabel("Z — elevation (m)")
-    ax.set_title("Joint Displacement (Z relative to start of each joint)")
-    ax.set_facecolor('#1a1a1a')
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=200)
-    plt.close(fig)
-    print(f"  Saved: {output_path}")
+    _rasterize_values(points, disp, track_idx, RASTER_RESOLUTION,
+                      'coolwarm', 'Displacement Z(x) - Z(start) (m)',
+                      'Joint Displacement (Z relative to start of each joint)',
+                      output_path)
 
 
 def main():
