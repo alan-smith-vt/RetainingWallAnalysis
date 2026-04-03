@@ -22,6 +22,11 @@ from config import (
     MAX_DISPLACEMENT_FOR_COLORS, EXPECTED_WALL_SLOPE,
     SLOPE_COLORMAP_RANGE, METERS_TO_FEET,
 )
+try:
+    from config import MAX_DISPLACEMENT_POSITIVE, MAX_DISPLACEMENT_NEGATIVE
+except ImportError:
+    MAX_DISPLACEMENT_POSITIVE = None
+    MAX_DISPLACEMENT_NEGATIVE = None
 
 
 def ensure_dir(filepath):
@@ -41,32 +46,30 @@ def create_displacement_colorbar(save_path=None):
 
     Range: -MAX_DISPLACEMENT_FOR_COLORS to +MAX_DISPLACEMENT_FOR_COLORS
     """
-    fig, ax = plt.subplots(figsize=(5, 2.5))
+    fig, ax = plt.subplots(figsize=(7, 2.5))
 
-    max_disp_m = MAX_DISPLACEMENT_FOR_COLORS
-    max_disp_ft = max_disp_m * METERS_TO_FEET
-    max_disp_in = max_disp_ft * 12
+    max_pos_m = MAX_DISPLACEMENT_POSITIVE if MAX_DISPLACEMENT_POSITIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
+    max_neg_m = MAX_DISPLACEMENT_NEGATIVE if MAX_DISPLACEMENT_NEGATIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
+    max_pos_in = max_pos_m * METERS_TO_FEET * 12
+    max_neg_in = max_neg_m * METERS_TO_FEET * 12
 
-    # Build the colorbar from the same mapping used in wall_analysis.py:
-    #   mapped = clip(delta / MAX * 0.5 + 0.5, 0, 1)
-    # So delta = -MAX → 0 (blue), delta = 0 → 0.5 (green), delta = +MAX → 1 (red)
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
     sm.set_array([])
 
     cbar = fig.colorbar(sm, cax=ax, orientation='horizontal')
 
-    # Label tick positions in real units
+    # Blue end (0) = positive/backward, Red end (1) = negative/forward
     tick_positions = [0, 0.25, 0.5, 0.75, 1.0]
-    tick_labels_m = [
-        f"-{max_disp_m:.2f} m\n(-{max_disp_in:.1f}\")",
-        f"-{max_disp_m/2:.2f} m\n(-{max_disp_in/2:.1f}\")",
-        f"0 m\n(on profile)",
-        f"+{max_disp_m/2:.2f} m\n(+{max_disp_in/2:.1f}\")",
-        f"+{max_disp_m:.2f} m\n(+{max_disp_in:.1f}\")",
+    tick_labels_in = [
+        f"+{max_pos_in:.1f}\"",
+        f"+{max_pos_in/2:.1f}\"",
+        "0\n(on profile)",
+        f"-{max_neg_in/2:.1f}\"",
+        f"-{max_neg_in:.1f}\"",
     ]
     cbar.set_ticks(tick_positions)
-    cbar.set_ticklabels(tick_labels_m)
+    cbar.set_ticklabels(tick_labels_in)
     ax.tick_params(labelsize=14)
 
     expected_pct = EXPECTED_WALL_SLOPE * 100
@@ -103,7 +106,7 @@ def create_slope_colorbar(save_path=None):
 
     Range: expected - SLOPE_COLORMAP_RANGE% to expected + SLOPE_COLORMAP_RANGE%
     """
-    fig, ax = plt.subplots(figsize=(5, 2.5))
+    fig, ax = plt.subplots(figsize=(7, 2.5))
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
@@ -161,7 +164,7 @@ def create_new_slope_colorbar(save_path=None):
     Blue = top of wall further back than expected
     Red = top of wall further forward than expected
     """
-    fig, ax = plt.subplots(figsize=(5, 2.5))
+    fig, ax = plt.subplots(figsize=(7, 2.5))
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
@@ -222,7 +225,7 @@ def create_all_colorbars(save_dir="outputs/images/"):
     create_new_slope_colorbar(save_path=new_slope_path)
 
     # Stack all three into one image
-    fig, axes = plt.subplots(3, 1, figsize=(5, 8))
+    fig, axes = plt.subplots(3, 1, figsize=(7, 8))
 
     for ax_idx, (create_fn, title) in enumerate([
         (_draw_displacement_bar, "Displacement"),
@@ -239,8 +242,10 @@ def create_all_colorbars(save_dir="outputs/images/"):
 
 def _draw_displacement_bar(ax):
     """Draw displacement colorbar onto an existing axes."""
-    max_disp_m = MAX_DISPLACEMENT_FOR_COLORS
-    max_disp_in = max_disp_m * METERS_TO_FEET * 12
+    max_pos_m = MAX_DISPLACEMENT_POSITIVE if MAX_DISPLACEMENT_POSITIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
+    max_neg_m = MAX_DISPLACEMENT_NEGATIVE if MAX_DISPLACEMENT_NEGATIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
+    max_pos_in = max_pos_m * METERS_TO_FEET * 12
+    max_neg_in = max_neg_m * METERS_TO_FEET * 12
     expected_pct = EXPECTED_WALL_SLOPE * 100
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
@@ -250,11 +255,11 @@ def _draw_displacement_bar(ax):
 
     ticks = [0, 0.25, 0.5, 0.75, 1.0]
     labels = [
-        f"-{max_disp_m:.2f}m ({-max_disp_in:.1f}\")",
-        f"-{max_disp_m/2:.2f}m",
+        f"+{max_pos_in:.1f}\"",
+        f"+{max_pos_in/2:.1f}\"",
         "0 (on profile)",
-        f"+{max_disp_m/2:.2f}m",
-        f"+{max_disp_m:.2f}m (+{max_disp_in:.1f}\")",
+        f"-{max_neg_in/2:.1f}\"",
+        f"-{max_neg_in:.1f}\"",
     ]
     cbar.set_ticks(ticks)
     cbar.set_ticklabels(labels)
