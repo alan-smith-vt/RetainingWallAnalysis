@@ -266,16 +266,12 @@ def process_slice(args):
     # Horizontal sub-steps for slope analysis
     slice_width = x_max - x_min
     h_step = max(slice_width - slice_overlap, 0.01)
-    n_h_steps = max(int(slice_width / h_step), 1)
+    n_h_steps = max(math.ceil(slice_width / h_step), 1)
 
     # Piecewise slope fitting with vertical and horizontal overlap
     v_step = max(segLength - seg_overlap, 0.1)
     wall_height = z_max - z_min
-    numSlopes = max(int(wall_height / v_step), 1)
-
-    if i == 0:
-        print(f"[DEBUG slice 0] slice_width={slice_width:.3f} slice_overlap={slice_overlap} h_step={h_step:.3f} n_h_steps={n_h_steps}")
-        print(f"[DEBUG slice 0] segLength={segLength} seg_overlap={seg_overlap} v_step={v_step:.3f} numSlopes={numSlopes} wall_height={wall_height:.3f}")
+    numSlopes = max(math.ceil(wall_height / v_step), 1)
 
     piecewise_lines_unrotated = []
     piecewise_line_colors = []
