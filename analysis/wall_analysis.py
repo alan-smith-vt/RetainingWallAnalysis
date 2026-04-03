@@ -282,7 +282,20 @@ def process_slice(args):
         draw_x1 = x_min + h * h_step
         draw_x2 = min(draw_x1 + h_step, x_max)
 
-        # Fit using all points in the full slice width (analysis_window)
+        # Extract points for this sub-step's fitting window (spacing-wide, centered)
+        sub_center = (draw_x1 + draw_x2) / 2
+        fit_x1 = sub_center - spacing / 2
+        fit_x2 = sub_center + spacing / 2
+        sub_x_mask = (x_values >= fit_x1) & (x_values <= fit_x2)
+        sub_slice = points_rotated[sub_x_mask]
+        sub_y_mask = np.abs(sub_slice[:, 1] - v1_rotated[1]) <= SLICE_HALF_WIDTH
+        sub_slice = sub_slice[sub_y_mask]
+        if len(sub_slice) == 0:
+            continue
+        sub_points_2d = sub_slice[:, 1:3]
+        sub_sorted = np.argsort(sub_points_2d[:, 1])
+        sub_points_2d = sub_points_2d[sub_sorted]
+
         for j in range(numSlopes):
             # Vertical: draw region
             draw_z1 = z_min + j * v_step
@@ -292,7 +305,7 @@ def process_slice(args):
             fit_z1 = max(draw_z1 - seg_overlap / 2, z_min)
             fit_z2 = min(draw_z2 + seg_overlap / 2, z_max)
 
-            slope_val, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, fit_z1, fit_z2, draw_x1, draw_x2, thresh)
+            slope_val, intercept, y, line, line_color = fitLineZ1toZ2(sub_points_2d, fit_z1, fit_z2, draw_x1, draw_x2, thresh)
             if slope_val is None:
                 continue
 
