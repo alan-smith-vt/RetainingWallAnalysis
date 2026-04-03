@@ -290,8 +290,11 @@ def assign_points_to_tracks(points, fitted_tracks):
             with np.errstate(divide='ignore', invalid='ignore'):
                 dzdx = np.where(np.abs(dx_du) > 1e-10, dz_du / dx_du, 0.0)
 
-            _, z_start = splev(0.0, tck)
-            disp = z_eval - z_start
+            # Settlement relative to highest point on this spline
+            u_dense = np.linspace(0, 1, 200)
+            _, z_dense = splev(u_dense, tck)
+            z_max = z_dense.max()
+            disp = z_max - z_eval  # always >= 0
         else:
             z_eval = np.full(len(cand_idx), track['mean_z'])
             dzdx = np.zeros(len(cand_idx))
@@ -416,11 +419,65 @@ def plot_rotation(points, dzdx, track_idx, output_path):
                       'Joint Rotation (dZ/dX from spline fit)', output_path)
 
 
-def plot_displacement(points, disp, track_idx, output_path):
-    _rasterize_values(points, disp, track_idx, RASTER_RESOLUTION,
-                      'coolwarm', 'Displacement Z(x) - Z(start) (m)',
-                      'Joint Displacement (Z relative to start of each joint)',
-                      output_path)
+def plot_settlement(points, disp, track_idx, output_path):
+    """Settlement: blue=0, red=max. One-directional, no negative values."""
+    assigned = track_idx >= 0
+    if not np.any(assigned):
+        print("  No points assigned, skipping settlement plot.")
+        return
+
+    px, pz = points[:, 0], points[:, 2]
+    x_min, x_max = px.min(), px.max()
+    z_min, z_max = pz.min(), pz.max()
+    resolution = RASTER_RESOLUTION
+
+    x_edges = np.arange(x_min, x_max + resolution, resolution)
+    z_edges = np.arange(z_min, z_max + resolution, resolution)
+    nc, nr = len(x_edges) - 1, len(z_edges) - 1
+
+    a_px, a_pz = px[assigned], pz[assigned]
+    a_vals = disp[assigned]
+    xi = np.clip(np.searchsorted(x_edges, a_px) - 1, 0, nc - 1)
+    zi = np.clip(np.searchsorted(z_edges, a_pz) - 1, 0, nr - 1)
+    flat = zi * nc + xi
+
+    val_sum = np.bincount(flat, weights=a_vals, minlength=nr * nc)
+    counts = np.bincount(flat, minlength=nr * nc)
+    m = counts > 0
+    raster = np.full(nr * nc, np.nan)
+    raster[m] = val_sum[m] / counts[m]
+    raster = raster.reshape(nr, nc)
+
+    all_xi = np.clip(np.searchsorted(x_edges, px) - 1, 0, nc - 1)
+    all_zi = np.clip(np.searchsorted(z_edges, pz) - 1, 0, nr - 1)
+    all_flat = all_zi * nc + all_xi
+    all_counts = np.bincount(all_flat, minlength=nr * nc).reshape(nr, nc)
+
+    x_c = (x_edges[:-1] + x_edges[1:]) / 2
+    z_c = (z_edges[:-1] + z_edges[1:]) / 2
+    extent = [x_c[0], x_c[-1], z_c[0], z_c[-1]]
+
+    vmax = max(0.001, np.nanpercentile(a_vals[~np.isnan(a_vals)], 95))
+
+    fig, ax = plt.subplots(figsize=(16, 8))
+    bg = np.where(all_counts > 0, 0.08, np.nan)
+    ax.imshow(bg, aspect='auto', origin='lower', extent=extent,
+              cmap='gray', vmin=0, vmax=1, interpolation='nearest')
+
+    cmap = plt.get_cmap('coolwarm').copy()
+    cmap.set_bad(alpha=0)
+    im = ax.imshow(raster, aspect='auto', origin='lower', extent=extent,
+                   cmap=cmap, vmin=0, vmax=vmax, interpolation='nearest')
+    plt.colorbar(im, ax=ax, label='Settlement (m)', shrink=0.8)
+
+    ax.set_xlabel("X — along wall (m)")
+    ax.set_ylabel("Z — elevation (m)")
+    ax.set_title("Joint Settlement (Z_max - Z(x), blue=0, red=max)")
+    ax.set_facecolor('black')
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    print(f"  Saved: {output_path}")
 
 
 def main():
@@ -483,8 +540,8 @@ def main():
 
         plot_rotation(points, dzdx, track_idx,
                       f"{OUTPUT_DIR}/wall_{wall_id}_rotation.png")
-        plot_displacement(points, disp, track_idx,
-                          f"{OUTPUT_DIR}/wall_{wall_id}_displacement.png")
+        plot_settlement(points, disp, track_idx,
+                        f"{OUTPUT_DIR}/wall_{wall_id}_settlement.png")
 
     print(f"\nDone. Output in {OUTPUT_DIR}/")
 
