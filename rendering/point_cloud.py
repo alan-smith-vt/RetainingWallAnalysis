@@ -16,7 +16,6 @@ import glob
 from io import BytesIO
 import cv2
 import re
-import struct
 from tqdm import tqdm
 from config import (
     RENDER_DPI, RENDER_RESOLUTION, RENDER_TARGET,
@@ -111,7 +110,6 @@ def read_ply_scalar(filepath):
 
         # Calculate byte offsets
         type_sizes = {'float': 4, 'uchar': 1, 'double': 8, 'int': 4, 'short': 2}
-        type_formats = {'float': 'f', 'uchar': 'B', 'double': 'd', 'int': 'i', 'short': 'h'}
         vertex_size = sum(type_sizes[t] for t, _ in properties)
         intensity_offset = 0
         for t, name in properties:
@@ -119,13 +117,12 @@ def read_ply_scalar(filepath):
                 break
             intensity_offset += type_sizes[t]
 
-        # Read all vertices and extract intensity
-        data = f.read(n_vertices * vertex_size)
-        scalars = np.zeros(n_vertices, dtype=np.float32)
-        for i in range(n_vertices):
-            offset = i * vertex_size + intensity_offset
-            scalars[i] = struct.unpack_from('f', data, offset)[0]
-        return scalars
+        # Read all vertex data, extract intensity as strided float32 view
+        data = np.frombuffer(f.read(n_vertices * vertex_size), dtype=np.uint8)
+        scalars = np.ndarray(n_vertices, dtype=np.float32,
+                             buffer=data, offset=intensity_offset,
+                             strides=(vertex_size,))
+        return scalars.copy()
 
 
 def scalar_to_colors_slope(scalars):
