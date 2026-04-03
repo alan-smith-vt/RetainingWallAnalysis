@@ -32,16 +32,12 @@ def ensure_dir(filepath):
 
 from config import (
     POINT_CLOUD_FILE, WALL_VERTICES_PATTERN, WALL_IDS, ANALYSIS_SPACINGS,
-    SEGMENT_LENGTH, SEGMENT_OVERLAP, SLICE_HALF_WIDTH, TOP_OF_WALL_OFFSET,
-    MAX_DISPLACEMENT_FOR_COLORS, EXPECTED_WALL_SLOPE,
+    SEGMENT_LENGTH, SEGMENT_OVERLAP, SLICE_OVERLAP, SLICE_HALF_WIDTH,
+    TOP_OF_WALL_OFFSET, MAX_DISPLACEMENT_FOR_COLORS, EXPECTED_WALL_SLOPE,
     SLOPE_THRESHOLD, SLOPE_COLORMAP_RANGE,
     TOP_INCHES_FOR_NEW_SLOPE, DISCRETE_SLOPE_RANGES,
     NUM_WORKERS,
 )
-try:
-    from config import SLICE_OVERLAP
-except ImportError:
-    SLICE_OVERLAP = 0
 
 
 def printf(msg):
@@ -221,7 +217,7 @@ def process_slice(args):
     Reads points_master from shared memory. Returns a dict with all
     per-slice outputs, or None if the slice is empty.
     """
-    i, v1, v2, vertices, thresh, segLength, spacing = args
+    i, v1, v2, vertices, thresh, segLength, spacing, seg_overlap, slice_overlap = args
 
     # Access shared points_master
     points_master = _points_master
@@ -267,13 +263,13 @@ def process_slice(args):
 
     z_max = np.max(pc_slice[:, 2]) + TOP_OF_WALL_OFFSET
 
-    # Horizontal sub-steps for slope analysis (SLICE_OVERLAP)
+    # Horizontal sub-steps for slope analysis
     slice_width = x_max - x_min
-    h_step = max(slice_width - SLICE_OVERLAP, 0.01)
+    h_step = max(slice_width - slice_overlap, 0.01)
     n_h_steps = max(int(slice_width / h_step), 1)
 
     # Piecewise slope fitting with vertical and horizontal overlap
-    v_step = max(segLength - SEGMENT_OVERLAP, 0.1)
+    v_step = max(segLength - seg_overlap, 0.1)
     wall_height = z_max - z_min
     numSlopes = max(int(wall_height / v_step), 1)
 
@@ -293,8 +289,8 @@ def process_slice(args):
             draw_z2 = min(draw_z1 + v_step, z_max)
 
             # Expanded vertical data window for fitting
-            fit_z1 = max(draw_z1 - SEGMENT_OVERLAP / 2, z_min)
-            fit_z2 = min(draw_z2 + SEGMENT_OVERLAP / 2, z_max)
+            fit_z1 = max(draw_z1 - seg_overlap / 2, z_min)
+            fit_z2 = min(draw_z2 + seg_overlap / 2, z_max)
 
             slope_val, intercept, y, line, line_color = fitLineZ1toZ2(points_2d, fit_z1, fit_z2, draw_x1, draw_x2, thresh)
             if slope_val is None:
@@ -445,7 +441,7 @@ if __name__ == '__main__':
             # Build argument list for each slice
             n_slices = len(vertices) - 1
             args_list = [
-                (i, vertices[i].copy(), vertices[i + 1].copy(), vertices.copy(), thresh, SEGMENT_LENGTH, spacing)
+                (i, vertices[i].copy(), vertices[i + 1].copy(), vertices.copy(), thresh, SEGMENT_LENGTH, spacing, SEGMENT_OVERLAP, SLICE_OVERLAP)
                 for i in range(n_slices)
             ]
 
