@@ -65,9 +65,7 @@ def create_displacement_colorbar(save_path=None):
     Green/Yellow = on expected profile
     Red = less batter than expected (wall forward of profile)
     """
-    fig = plt.figure(figsize=(10, 3.5))
-    # Colorbar axes — narrow bar, wide figure for title
-    ax = fig.add_axes([0.15, 0.45, 0.5, 0.25])
+    fig, ax = plt.subplots(figsize=(5, 3))
 
     max_pos_m = MAX_DISPLACEMENT_POSITIVE if MAX_DISPLACEMENT_POSITIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
     max_neg_m = MAX_DISPLACEMENT_NEGATIVE if MAX_DISPLACEMENT_NEGATIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
@@ -76,23 +74,38 @@ def create_displacement_colorbar(save_path=None):
 
     _displacement_gradient(ax, max_pos_in, max_neg_in)
 
-    # Ticks at key positions along the real-unit axis
+    # Place tick labels manually at staggered heights so they don't overlap
     ticks = [max_pos_in, max_pos_in / 2, 0, -max_neg_in / 2, -max_neg_in]
-    tick_labels = [
+    labels = [
         f"+{max_pos_in:.1f}\"",
         f"+{max_pos_in / 2:.1f}\"",
-        "0\n(on profile)",
+        "0 (on profile)",
         f"-{max_neg_in / 2:.1f}\"",
         f"-{max_neg_in:.1f}\"",
     ]
     ax.set_xticks(ticks)
-    ax.set_xticklabels(tick_labels)
-    ax.tick_params(axis='x', labelsize=14, length=8, pad=8)
+    ax.set_xticklabels([])  # hide default labels
+    # Draw long ticks manually + staggered labels
+    for i, (t, label) in enumerate(zip(ticks, labels)):
+        is_low = (i % 2 == 1)  # stagger odd-indexed labels lower
+        tick_len = 18 if is_low else 10
+        label_y = -tick_len - 18
+        ax.plot([t, t], [0, 0], color='k', clip_on=False,
+                transform=ax.get_xaxis_transform())
+        # Draw tick line below the bar
+        ax.annotate('', xy=(t, 0), xytext=(t, -tick_len),
+                    xycoords=('data', 'axes points'),
+                    textcoords=('data', 'axes points'),
+                    arrowprops=dict(arrowstyle='-', color='k', lw=1))
+        ax.annotate(label, xy=(t, label_y),
+                    xycoords=('data', 'axes points'),
+                    ha='center', va='top', fontsize=14)
+    ax.tick_params(axis='x', length=0)  # hide default ticks
 
     expected_pct = EXPECTED_WALL_SLOPE * 100
     title = (f"Displacement from Expected Profile "
              f"(expected batter: {expected_pct:.1f}%)")
-    ax.set_xlabel(title, fontsize=17, fontweight='bold', labelpad=15)
+    fig.text(0.5, 0.02, title, ha='center', fontsize=17, fontweight='bold')
 
     # Zero fraction for annotation positioning
     zero_frac = max_pos_in / (max_pos_in + max_neg_in)
@@ -122,8 +135,7 @@ def create_slope_colorbar(save_path=None):
 
     Range: expected - SLOPE_COLORMAP_RANGE% to expected + SLOPE_COLORMAP_RANGE%
     """
-    fig = plt.figure(figsize=(10, 3.5))
-    ax = fig.add_axes([0.15, 0.45, 0.5, 0.25])
+    fig, ax = plt.subplots(figsize=(5, 3))
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
@@ -138,18 +150,18 @@ def create_slope_colorbar(save_path=None):
     tick_labels = [
         f"{expected_pct + range_pct:.1f}%",
         f"{expected_pct + range_pct/2:.1f}%",
-        f"{expected_pct:.1f}%\n(expected)",
+        f"{expected_pct:.1f}% (expected)",
         f"{expected_pct - range_pct/2:.1f}%",
         f"{expected_pct - range_pct:.1f}%",
     ]
     cbar.set_ticks(tick_positions)
     cbar.set_ticklabels(tick_labels)
-    ax.tick_params(axis='x', labelsize=14, length=8, pad=8)
+    ax.tick_params(axis='x', labelsize=14)
 
     title = (f"Piecewise Slope  |  "
              f"expected: {expected_pct:.1f}%  |  "
              f"range: \u00b1{range_pct:.1f}%")
-    ax.set_xlabel(title, fontsize=17, fontweight='bold', labelpad=15)
+    fig.text(0.5, 0.02, title, ha='center', fontsize=17, fontweight='bold')
 
     ax.annotate('More batter', xy=(0.05, 1.15), xycoords='axes fraction',
                 ha='center', fontsize=12, color='blue', fontweight='bold')
@@ -175,8 +187,7 @@ def create_new_slope_colorbar(save_path=None):
     Blue = top of wall further back than expected
     Red = top of wall further forward than expected
     """
-    fig = plt.figure(figsize=(10, 3.5))
-    ax = fig.add_axes([0.15, 0.45, 0.5, 0.25])
+    fig, ax = plt.subplots(figsize=(5, 3))
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
@@ -189,19 +200,19 @@ def create_new_slope_colorbar(save_path=None):
 
     tick_positions = [0, 0.25, 0.5, 0.75, 1.0]
     tick_labels = [
-        f"+{range_pct:.1f}%\ndeviation",
+        f"+{range_pct:.1f}% deviation",
         f"+{range_pct/2:.1f}%",
-        f"0%\n(matches {expected_pct:.1f}%)",
+        f"0% (matches {expected_pct:.1f}%)",
         f"-{range_pct/2:.1f}%",
-        f"-{range_pct:.1f}%\ndeviation",
+        f"-{range_pct:.1f}% deviation",
     ]
     cbar.set_ticks(tick_positions)
     cbar.set_ticklabels(tick_labels)
-    ax.tick_params(axis='x', labelsize=14, length=8, pad=8)
+    ax.tick_params(axis='x', labelsize=14)
 
     title = (f"Top-of-Wall Slope Deviation from Expected ({expected_pct:.1f}%)  |  "
              f"range: \u00b1{range_pct:.1f}%")
-    ax.set_xlabel(title, fontsize=17, fontweight='bold', labelpad=15)
+    fig.text(0.5, 0.02, title, ha='center', fontsize=17, fontweight='bold')
 
     ax.annotate('Top further back', xy=(0.05, 1.15), xycoords='axes fraction',
                 ha='center', fontsize=12, color='blue', fontweight='bold')
@@ -267,10 +278,21 @@ def _draw_displacement_bar(ax):
         f"-{max_neg_in:.1f}\"",
     ]
     ax.set_xticks(ticks)
-    ax.set_xticklabels(labels)
-    ax.tick_params(axis='x', labelsize=12, length=8, pad=8)
+    ax.set_xticklabels([])
+    for i, (t, label) in enumerate(zip(ticks, labels)):
+        is_low = (i % 2 == 1)
+        tick_len = 14 if is_low else 8
+        label_y = -tick_len - 14
+        ax.annotate('', xy=(t, 0), xytext=(t, -tick_len),
+                    xycoords=('data', 'axes points'),
+                    textcoords=('data', 'axes points'),
+                    arrowprops=dict(arrowstyle='-', color='k', lw=1))
+        ax.annotate(label, xy=(t, label_y),
+                    xycoords=('data', 'axes points'),
+                    ha='center', va='top', fontsize=12)
+    ax.tick_params(axis='x', length=0)
     ax.set_xlabel(f"Displacement from Expected Profile (batter: {expected_pct:.1f}%)",
-                  fontsize=15, fontweight='bold', labelpad=10)
+                  fontsize=15, fontweight='bold', labelpad=50)
 
 
 def _draw_slope_bar(ax):
@@ -293,9 +315,9 @@ def _draw_slope_bar(ax):
     ]
     cbar.set_ticks(ticks)
     cbar.set_ticklabels(labels)
-    ax.tick_params(axis='x', labelsize=12, length=8, pad=8)
+    ax.tick_params(axis='x', labelsize=12)
     ax.set_xlabel(f"Piecewise Slope (expected: {expected_pct:.1f}%, range: \u00b1{r:.1f}%)",
-                  fontsize=15, fontweight='bold', labelpad=10)
+                  fontsize=15, fontweight='bold', labelpad=15)
 
 
 def _draw_new_slope_bar(ax):
@@ -318,9 +340,9 @@ def _draw_new_slope_bar(ax):
     ]
     cbar.set_ticks(ticks)
     cbar.set_ticklabels(labels)
-    ax.tick_params(axis='x', labelsize=12, length=8, pad=8)
+    ax.tick_params(axis='x', labelsize=12)
     ax.set_xlabel(f"Top-of-Wall Deviation from Expected ({expected_pct:.1f}%)",
-                  fontsize=15, fontweight='bold', labelpad=10)
+                  fontsize=15, fontweight='bold', labelpad=15)
 
 
 if __name__ == "__main__":
