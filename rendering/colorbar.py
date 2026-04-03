@@ -36,56 +36,72 @@ def ensure_dir(filepath):
         os.makedirs(dirpath, exist_ok=True)
 
 
+def _displacement_gradient(ax, max_pos_in, max_neg_in):
+    """Render an asymmetric jet gradient into *ax* with real-unit x-axis.
+
+    The x-axis runs from +max_pos_in (blue, left) to -max_neg_in (red, right).
+    Zero is positioned proportionally, so it is off-center when the ranges differ.
+    """
+    n = 512
+    values = np.linspace(max_pos_in, -max_neg_in, n)
+    # Same mapping as rendering/point_cloud.py scalar_to_colors_displacement
+    mapped = np.where(
+        values >= 0,
+        0.5 - (values / max_pos_in) * 0.5,
+        0.5 + (-values / max_neg_in) * 0.5,
+    )
+    colors = plt.cm.jet(mapped)
+    ax.imshow(colors.reshape(1, -1, 4), aspect='auto',
+              extent=[max_pos_in, -max_neg_in, 0, 1])
+    ax.set_yticks([])
+    ax.set_xlim(max_pos_in, -max_neg_in)
+
+
 def create_displacement_colorbar(save_path=None):
     """
-    Centered jet colorbar for displacement analysis.
+    Asymmetric jet colorbar for displacement analysis.
 
     Blue = more batter than expected (wall behind profile)
     Green/Yellow = on expected profile
     Red = less batter than expected (wall forward of profile)
-
-    Range: -MAX_DISPLACEMENT_FOR_COLORS to +MAX_DISPLACEMENT_FOR_COLORS
     """
-    fig, ax = plt.subplots(figsize=(7, 2.5))
+    fig = plt.figure(figsize=(10, 2.5))
+    # Keep colorbar narrow — leave margins for title / annotations
+    ax = fig.add_axes([0.15, 0.55, 0.5, 0.2])
 
     max_pos_m = MAX_DISPLACEMENT_POSITIVE if MAX_DISPLACEMENT_POSITIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
     max_neg_m = MAX_DISPLACEMENT_NEGATIVE if MAX_DISPLACEMENT_NEGATIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
     max_pos_in = max_pos_m * METERS_TO_FEET * 12
     max_neg_in = max_neg_m * METERS_TO_FEET * 12
 
-    norm = mcolors.Normalize(vmin=0, vmax=1)
-    sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
-    sm.set_array([])
+    _displacement_gradient(ax, max_pos_in, max_neg_in)
 
-    cbar = fig.colorbar(sm, cax=ax, orientation='horizontal')
-
-    # Blue end (0) = positive/backward, Red end (1) = negative/forward
-    tick_positions = [0, 0.25, 0.5, 0.75, 1.0]
-    tick_labels_in = [
+    # Ticks at key positions along the real-unit axis
+    ticks = [max_pos_in, max_pos_in / 2, 0, -max_neg_in / 2, -max_neg_in]
+    tick_labels = [
         f"+{max_pos_in:.1f}\"",
-        f"+{max_pos_in/2:.1f}\"",
-        "0\n(on profile)",
-        f"-{max_neg_in/2:.1f}\"",
+        f"+{max_pos_in / 2:.1f}\"",
+        "0 (on profile)",
+        f"-{max_neg_in / 2:.1f}\"",
         f"-{max_neg_in:.1f}\"",
     ]
-    cbar.set_ticks(tick_positions)
-    cbar.set_ticklabels(tick_labels_in)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(tick_labels)
     ax.tick_params(labelsize=14)
 
     expected_pct = EXPECTED_WALL_SLOPE * 100
     title = (f"Displacement from Expected Profile "
              f"(expected batter: {expected_pct:.1f}%)")
-    cbar.set_label(title, fontsize=17, fontweight='bold')
+    ax.set_title(title, fontsize=17, fontweight='bold', pad=30)
 
-    # Annotations
+    # Zero fraction for annotation positioning
+    zero_frac = max_pos_in / (max_pos_in + max_neg_in)
     ax.annotate('More batter\nthan expected', xy=(0.05, 1.15), xycoords='axes fraction',
                 ha='center', fontsize=12, color='blue', fontweight='bold')
-    ax.annotate('On profile', xy=(0.5, 1.15), xycoords='axes fraction',
+    ax.annotate('On profile', xy=(zero_frac, 1.15), xycoords='axes fraction',
                 ha='center', fontsize=12, color='green', fontweight='bold')
     ax.annotate('Less batter\nthan expected', xy=(0.95, 1.15), xycoords='axes fraction',
                 ha='center', fontsize=12, color='red', fontweight='bold')
-
-    plt.tight_layout()
 
     if save_path:
         ensure_dir(save_path)
@@ -106,7 +122,8 @@ def create_slope_colorbar(save_path=None):
 
     Range: expected - SLOPE_COLORMAP_RANGE% to expected + SLOPE_COLORMAP_RANGE%
     """
-    fig, ax = plt.subplots(figsize=(7, 2.5))
+    fig = plt.figure(figsize=(10, 2.5))
+    ax = fig.add_axes([0.15, 0.55, 0.5, 0.2])
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
@@ -117,10 +134,6 @@ def create_slope_colorbar(save_path=None):
     expected_pct = EXPECTED_WALL_SLOPE * 100
     range_pct = SLOPE_COLORMAP_RANGE
 
-    # The mapping in wall_analysis.py value_to_rgb_jet:
-    #   deviation = measured - expected
-    #   mapped = clip((-deviation * 100) / RANGE * 0.5 + 0.5, 0, 1)
-    # So deviation = +RANGE% → 0 (blue), deviation = 0 → 0.5 (green), deviation = -RANGE% → 1 (red)
     tick_positions = [0, 0.25, 0.5, 0.75, 1.0]
     tick_labels = [
         f"{expected_pct + range_pct:.1f}%",
@@ -136,7 +149,7 @@ def create_slope_colorbar(save_path=None):
     title = (f"Piecewise Slope  |  "
              f"expected: {expected_pct:.1f}%  |  "
              f"range: \u00b1{range_pct:.1f}%")
-    cbar.set_label(title, fontsize=17, fontweight='bold')
+    ax.set_title(title, fontsize=17, fontweight='bold', pad=30)
 
     ax.annotate('More batter', xy=(0.05, 1.15), xycoords='axes fraction',
                 ha='center', fontsize=12, color='blue', fontweight='bold')
@@ -144,8 +157,6 @@ def create_slope_colorbar(save_path=None):
                 ha='center', fontsize=12, color='green', fontweight='bold')
     ax.annotate('Less batter', xy=(0.95, 1.15), xycoords='axes fraction',
                 ha='center', fontsize=12, color='red', fontweight='bold')
-
-    plt.tight_layout()
 
     if save_path:
         ensure_dir(save_path)
@@ -164,7 +175,8 @@ def create_new_slope_colorbar(save_path=None):
     Blue = top of wall further back than expected
     Red = top of wall further forward than expected
     """
-    fig, ax = plt.subplots(figsize=(7, 2.5))
+    fig = plt.figure(figsize=(10, 2.5))
+    ax = fig.add_axes([0.15, 0.55, 0.5, 0.2])
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
@@ -175,8 +187,6 @@ def create_new_slope_colorbar(save_path=None):
     range_pct = SLOPE_COLORMAP_RANGE
     expected_pct = EXPECTED_WALL_SLOPE * 100
 
-    # new_slope is already a deviation; mapping:
-    #   mapped = clip((-new_slope * 100) / RANGE * 0.5 + 0.5, 0, 1)
     tick_positions = [0, 0.25, 0.5, 0.75, 1.0]
     tick_labels = [
         f"+{range_pct:.1f}%\ndeviation",
@@ -191,7 +201,7 @@ def create_new_slope_colorbar(save_path=None):
 
     title = (f"Top-of-Wall Slope Deviation from Expected ({expected_pct:.1f}%)  |  "
              f"range: \u00b1{range_pct:.1f}%")
-    cbar.set_label(title, fontsize=17, fontweight='bold')
+    ax.set_title(title, fontsize=17, fontweight='bold', pad=30)
 
     ax.annotate('Top further back', xy=(0.05, 1.15), xycoords='axes fraction',
                 ha='center', fontsize=12, color='blue', fontweight='bold')
@@ -199,8 +209,6 @@ def create_new_slope_colorbar(save_path=None):
                 ha='center', fontsize=12, color='green', fontweight='bold')
     ax.annotate('Top further forward', xy=(0.95, 1.15), xycoords='axes fraction',
                 ha='center', fontsize=12, color='red', fontweight='bold')
-
-    plt.tight_layout()
 
     if save_path:
         ensure_dir(save_path)
@@ -225,7 +233,7 @@ def create_all_colorbars(save_dir="outputs/images/"):
     create_new_slope_colorbar(save_path=new_slope_path)
 
     # Stack all three into one image
-    fig, axes = plt.subplots(3, 1, figsize=(7, 8))
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8))
 
     for ax_idx, (create_fn, title) in enumerate([
         (_draw_displacement_bar, "Displacement"),
@@ -241,31 +249,28 @@ def create_all_colorbars(save_dir="outputs/images/"):
 
 
 def _draw_displacement_bar(ax):
-    """Draw displacement colorbar onto an existing axes."""
+    """Draw asymmetric displacement colorbar onto an existing axes."""
     max_pos_m = MAX_DISPLACEMENT_POSITIVE if MAX_DISPLACEMENT_POSITIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
     max_neg_m = MAX_DISPLACEMENT_NEGATIVE if MAX_DISPLACEMENT_NEGATIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
     max_pos_in = max_pos_m * METERS_TO_FEET * 12
     max_neg_in = max_neg_m * METERS_TO_FEET * 12
     expected_pct = EXPECTED_WALL_SLOPE * 100
 
-    norm = mcolors.Normalize(vmin=0, vmax=1)
-    sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
-    sm.set_array([])
-    cbar = plt.colorbar(sm, cax=ax, orientation='horizontal')
+    _displacement_gradient(ax, max_pos_in, max_neg_in)
 
-    ticks = [0, 0.25, 0.5, 0.75, 1.0]
+    ticks = [max_pos_in, max_pos_in / 2, 0, -max_neg_in / 2, -max_neg_in]
     labels = [
         f"+{max_pos_in:.1f}\"",
-        f"+{max_pos_in/2:.1f}\"",
+        f"+{max_pos_in / 2:.1f}\"",
         "0 (on profile)",
-        f"-{max_neg_in/2:.1f}\"",
+        f"-{max_neg_in / 2:.1f}\"",
         f"-{max_neg_in:.1f}\"",
     ]
-    cbar.set_ticks(ticks)
-    cbar.set_ticklabels(labels)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(labels)
     ax.tick_params(labelsize=12)
-    cbar.set_label(f"Displacement from Expected Profile (batter: {expected_pct:.1f}%)",
-                   fontsize=15, fontweight='bold')
+    ax.set_title(f"Displacement from Expected Profile (batter: {expected_pct:.1f}%)",
+                 fontsize=15, fontweight='bold')
 
 
 def _draw_slope_bar(ax):
