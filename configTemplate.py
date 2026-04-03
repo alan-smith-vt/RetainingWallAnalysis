@@ -58,6 +58,13 @@ DISCRETE_SLOPE_RANGES = [
 ]
 
 # ---------------------------------------------------------------------------
+# Station alignment — align renders with engineering drawings
+# ---------------------------------------------------------------------------
+STATION_MAX_FT = 1050             # Total station range in feet (drawing extent)
+STATION_START_OFFSET_IN = 80      # Inches — point cloud starts this far from station 0
+STATION_END_OFFSET_IN = 133       # Inches — point cloud ends this far before station max
+
+# ---------------------------------------------------------------------------
 # Station splits — divide wall renders into sub-images by station range
 # Each entry is (start_station_ft, end_station_ft).
 # Station format: 4+04 = 404 ft, 8+06.5 = 806.5 ft, etc.

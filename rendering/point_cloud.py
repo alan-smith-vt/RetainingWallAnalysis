@@ -32,6 +32,12 @@ try:
     from config import STATION_SPLITS
 except ImportError:
     STATION_SPLITS = None
+try:
+    from config import STATION_MAX_FT, STATION_START_OFFSET_IN, STATION_END_OFFSET_IN
+except ImportError:
+    STATION_MAX_FT = None
+    STATION_START_OFFSET_IN = 0
+    STATION_END_OFFSET_IN = 0
 
 print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
@@ -180,15 +186,44 @@ def render_point_cloud(points, colors, target, x_axis, y_axis, z_axis, sz, exten
     return projectToImage1000_color(points, extents, colors, x_axis, y_axis, z_axis, sz=sz)
 
 
+def station_align(points, x_axis):
+    """Scale and offset x-coordinates so they map to station space (meters).
+
+    After this transform, x=0 corresponds to station 0 and the data sits
+    between STATION_START_OFFSET and (STATION_MAX - STATION_END_OFFSET).
+    Returns (points_copy, total_extent_m) where total_extent_m is the full
+    station range in meters.  If alignment is not configured, returns
+    (points, None) unchanged.
+    """
+    if STATION_MAX_FT is None:
+        return points, None
+    total_m = STATION_MAX_FT * FEET_TO_METERS
+    start_m = STATION_START_OFFSET_IN * 0.0254
+    end_m = STATION_END_OFFSET_IN * 0.0254
+    data_range_m = total_m - start_m - end_m
+
+    x_max = np.max(points[:, x_axis]) - np.min(points[:, x_axis])
+    if x_max <= 0:
+        return points, None
+
+    scale = data_range_m / x_max
+    pts = points.copy()
+    pts[:, x_axis] = (pts[:, x_axis] - np.min(pts[:, x_axis])) * scale + start_m
+    return pts, total_m
+
+
 def get_station_ranges(points, x_axis):
-    """Return list of (start_m, end_m, label) tuples for station splits, or None for full image."""
+    """Return list of (start_m, end_m, label) tuples for station splits, or None for full image.
+
+    Assumes points are already in station-aligned space (x=0 = station 0)
+    if station alignment is configured.
+    """
     if not STATION_SPLITS:
         return None
-    x_min = np.min(points[:, x_axis])
     ranges = []
     for start_ft, end_ft in STATION_SPLITS:
-        start_m = start_ft * FEET_TO_METERS + x_min
-        end_m = end_ft * FEET_TO_METERS + x_min
+        start_m = start_ft * FEET_TO_METERS
+        end_m = end_ft * FEET_TO_METERS
         label = "%d+%02d_to_%d+%02d" % (start_ft // 100, start_ft % 100, end_ft // 100, end_ft % 100)
         ranges.append((start_m, end_m, label))
     return ranges
@@ -258,9 +293,14 @@ for target in [RENDER_TARGET]:
             ensure_dir('%s%s.png' % (saveLoc, basename))
             cv2.imwrite('%s%s.png' % (saveLoc, basename), res)
         else:
+            # Align x-coordinates to station space
+            points, total_m = station_align(points, x_axis)
+
             station_ranges = get_station_ranges(points, x_axis)
             if station_ranges:
                 full_extents = np.max(points, axis=0)
+                if total_m is not None:
+                    full_extents[x_axis] = total_m
                 for start_m, end_m, station_label in station_ranges:
                     mask = (points[:, x_axis] >= start_m) & (points[:, x_axis] < end_m)
                     sub_points = points[mask]
@@ -271,11 +311,15 @@ for target in [RENDER_TARGET]:
                     sub_points = sub_points.copy()
                     sub_points[:, x_axis] -= start_m
                     sub_extents = np.max(sub_points, axis=0)
+                    sub_extents[x_axis] = end_m - start_m
                     sub_extents[y_axis] = full_extents[y_axis]
                     res = render_point_cloud(sub_points, sub_colors, target, x_axis, y_axis, z_axis, sz, extents=sub_extents)
                     ensure_dir('%s%s_%s.png' % (saveLoc, basename, station_label))
                     cv2.imwrite('%s%s_%s.png' % (saveLoc, basename, station_label), res)
             else:
-                res = render_point_cloud(points, colors, target, x_axis, y_axis, z_axis, sz)
+                extents = np.max(points, axis=0)
+                if total_m is not None:
+                    extents[x_axis] = total_m
+                res = render_point_cloud(points, colors, target, x_axis, y_axis, z_axis, sz, extents=extents)
                 ensure_dir('%s%s.png' % (saveLoc, basename))
                 cv2.imwrite('%s%s.png' % (saveLoc, basename), res)

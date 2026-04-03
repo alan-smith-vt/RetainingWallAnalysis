@@ -26,6 +26,12 @@ try:
     from config import STATION_SPLITS
 except ImportError:
     STATION_SPLITS = None
+try:
+    from config import STATION_MAX_FT, STATION_START_OFFSET_IN, STATION_END_OFFSET_IN
+except ImportError:
+    STATION_MAX_FT = None
+    STATION_START_OFFSET_IN = 0
+    STATION_END_OFFSET_IN = 0
 
 print("[%s]: Python started." % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
@@ -88,6 +94,25 @@ def projectToImage1000_color(points, xyExtents, colors, x_axis, y_axis, z_axis, 
     return res
 
 
+def station_align(points, x_axis):
+    """Scale and offset x-coordinates so they map to station space (meters)."""
+    if STATION_MAX_FT is None:
+        return points, None
+    total_m = STATION_MAX_FT * FEET_TO_METERS
+    start_m = STATION_START_OFFSET_IN * 0.0254
+    end_m = STATION_END_OFFSET_IN * 0.0254
+    data_range_m = total_m - start_m - end_m
+
+    x_max = np.max(points[:, x_axis]) - np.min(points[:, x_axis])
+    if x_max <= 0:
+        return points, None
+
+    scale = data_range_m / x_max
+    pts = points.copy()
+    pts[:, x_axis] = (pts[:, x_axis] - np.min(pts[:, x_axis])) * scale + start_m
+    return pts, total_m
+
+
 def savePoints(points, filePath, colors=None):
     pcd = o3d.t.geometry.PointCloud()
     pcd.point.positions = points
@@ -138,14 +163,18 @@ for i in tqdm(range(len(files))):
     points_save[:, 1] = points_save[:, 1] * 0
     savePoints(points_save, "outputs/point_clouds/unrolled/elevation_exaggerated_%s.ply" % name)
 
-    extents = np.max(points_og_zeroed, axis=0)
+    # Align x-coordinates to station space
+    points, total_m = station_align(points, x_axis)
+
+    extents = np.max(points, axis=0)
+    if total_m is not None:
+        extents[x_axis] = total_m
     extents[2] = delta_z * 2 * scale
 
     if STATION_SPLITS:
-        x_min_og = np.min(points_og[:, x_axis])
         for start_ft, end_ft in STATION_SPLITS:
-            start_m = start_ft * FEET_TO_METERS + x_min_og - og_offset[x_axis]
-            end_m = end_ft * FEET_TO_METERS + x_min_og - og_offset[x_axis]
+            start_m = start_ft * FEET_TO_METERS
+            end_m = end_ft * FEET_TO_METERS
             mask = (points[:, x_axis] >= start_m) & (points[:, x_axis] < end_m)
             sub_points = points[mask]
             sub_colors = colors[mask]
