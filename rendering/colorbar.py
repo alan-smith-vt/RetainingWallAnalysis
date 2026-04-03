@@ -269,31 +269,23 @@ def create_new_slope_colorbar(save_path=None):
 
 
 def create_all_colorbars(save_dir="outputs/images/"):
-    """Generate all three colorbars and a combined image."""
+    """Generate the combined legend image with all three colorbars."""
     os.makedirs(save_dir, exist_ok=True)
 
-    disp_path = os.path.join(save_dir, "legend_displacement_colorbar.png")
-    slope_path = os.path.join(save_dir, "legend_slope_colorbar.png")
-    new_slope_path = os.path.join(save_dir, "legend_new_slope_colorbar.png")
-    combined_path = os.path.join(save_dir, "legend_all_colorbars.png")
+    combined_path = os.path.join(save_dir, "legend_colorbars.png")
 
-    create_displacement_colorbar(save_path=disp_path)
-    create_slope_colorbar(save_path=slope_path)
-    create_new_slope_colorbar(save_path=new_slope_path)
-
-    # Stack all three into one image
     fig, axes = plt.subplots(3, 1, figsize=(5, 10))
 
-    for ax_idx, (create_fn, title) in enumerate([
-        (_draw_displacement_bar, "Displacement"),
-        (_draw_slope_bar, "Piecewise Slope"),
-        (_draw_new_slope_bar, "Top-of-Wall Deviation"),
+    for ax_idx, create_fn in enumerate([
+        _draw_displacement_bar,
+        _draw_slope_bar,
+        _draw_new_slope_bar,
     ]):
         create_fn(axes[ax_idx])
 
     plt.tight_layout(h_pad=3.0)
     fig.savefig(combined_path, dpi=150, bbox_inches='tight', transparent=True)
-    print(f"Saved combined: {combined_path}")
+    print(f"Saved: {combined_path}")
     plt.close(fig)
 
 
