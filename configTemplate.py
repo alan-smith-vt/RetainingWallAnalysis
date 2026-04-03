@@ -130,6 +130,25 @@ CURVE_DEBUG_CENTER_X = None     # Meters along wall (None = use midpoint)
 CURVE_DEBUG_RANGE = 2.0         # ±meters around center
 
 # ---------------------------------------------------------------------------
+# Joint detection (analysis/joint_detection.py)
+# ---------------------------------------------------------------------------
+JOINT_NORMAL_KNN = 30           # Neighbors for normal estimation
+JOINT_RASTER_RESOLUTION = 0.01  # Meters — 2D raster cell size (1 cm)
+JOINT_GAUSSIAN_SIGMA = 3        # Bins — smoothing for vertical profiles
+JOINT_PEAK_MIN_HEIGHT = 0.15    # Minimum normalized score to count as peak
+JOINT_WINDOW_WIDTH = 1.0        # Meters — averaging window along wall
+JOINT_WINDOW_STEP = 0.5         # Meters — step between windows
+JOINT_MATCH_TOLERANCE = 0.05    # Meters — max Z offset to link peaks across windows
+JOINT_SPLINE_SMOOTHING = 1.0    # splprep smoothing factor per joint
+JOINT_SPLINE_POINTS = 500       # Points along each fitted spline
+JOINT_MIN_TRACK_LENGTH = 5      # Minimum detections to keep a track
+
+# Block dimensions (soft constraints for peak detection and tracking)
+BLOCK_HEIGHT_IN = 8             # Inches — nominal block height
+BLOCK_WIDTH_IN = 16             # Inches — nominal block width (half-offset per row)
+BLOCK_HEIGHT_TOLERANCE = 0.3    # Fraction — peaks allowed ±30% from expected spacing
+
+# ---------------------------------------------------------------------------
 # Grid and label overlay (postprocessing/grid_labels.py)
 # ---------------------------------------------------------------------------
 GRID_PAD_X = 305 * 2            # Pixels — left padding (2 stations)
