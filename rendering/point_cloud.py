@@ -24,6 +24,11 @@ from config import (
     FEET_TO_METERS,
 )
 try:
+    from config import MAX_DISPLACEMENT_POSITIVE, MAX_DISPLACEMENT_NEGATIVE
+except ImportError:
+    MAX_DISPLACEMENT_POSITIVE = None
+    MAX_DISPLACEMENT_NEGATIVE = None
+try:
     from config import STATION_SPLITS
 except ImportError:
     STATION_SPLITS = None
@@ -134,9 +139,17 @@ def scalar_to_colors_slope(scalars):
 
 
 def scalar_to_colors_displacement(scalars):
-    """Map displacement scalar values to colors using config colormap params."""
+    """Map displacement scalar values to colors using config colormap params.
+    Supports asymmetric ranges via MAX_DISPLACEMENT_POSITIVE/NEGATIVE."""
     cmap = plt.cm.jet
-    mapped = np.clip(-scalars / MAX_DISPLACEMENT_FOR_COLORS * 0.5 + 0.5, 0, 1)
+    max_pos = MAX_DISPLACEMENT_POSITIVE if MAX_DISPLACEMENT_POSITIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
+    max_neg = MAX_DISPLACEMENT_NEGATIVE if MAX_DISPLACEMENT_NEGATIVE is not None else MAX_DISPLACEMENT_FOR_COLORS
+    # Map: displacement = -max_neg → 0 (blue), 0 → midpoint, +max_pos → 1 (red)
+    mapped = np.where(
+        scalars >= 0,
+        0.5 + 0.5 * np.clip(scalars / max_pos, 0, 1),
+        0.5 - 0.5 * np.clip(-scalars / max_neg, 0, 1),
+    )
     return cmap(mapped)[:, :3]
 
 
