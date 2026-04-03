@@ -41,7 +41,7 @@ def create_displacement_colorbar(save_path=None):
 
     Range: -MAX_DISPLACEMENT_FOR_COLORS to +MAX_DISPLACEMENT_FOR_COLORS
     """
-    fig, ax = plt.subplots(figsize=(10, 2))
+    fig, ax = plt.subplots(figsize=(5, 2.5))
 
     max_disp_m = MAX_DISPLACEMENT_FOR_COLORS
     max_disp_ft = max_disp_m * METERS_TO_FEET
@@ -67,20 +67,20 @@ def create_displacement_colorbar(save_path=None):
     ]
     cbar.set_ticks(tick_positions)
     cbar.set_ticklabels(tick_labels_m)
-    ax.tick_params(labelsize=9)
+    ax.tick_params(labelsize=14)
 
     expected_pct = EXPECTED_WALL_SLOPE * 100
     title = (f"Displacement from Expected Profile "
              f"(expected batter: {expected_pct:.1f}%)")
-    cbar.set_label(title, fontsize=11, fontweight='bold')
+    cbar.set_label(title, fontsize=17, fontweight='bold')
 
     # Annotations
     ax.annotate('More batter\nthan expected', xy=(0.05, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=8, color='blue', fontweight='bold')
+                ha='center', fontsize=12, color='blue', fontweight='bold')
     ax.annotate('On profile', xy=(0.5, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=8, color='green', fontweight='bold')
+                ha='center', fontsize=12, color='green', fontweight='bold')
     ax.annotate('Less batter\nthan expected', xy=(0.95, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=8, color='red', fontweight='bold')
+                ha='center', fontsize=12, color='red', fontweight='bold')
 
     plt.tight_layout()
 
@@ -103,7 +103,7 @@ def create_slope_colorbar(save_path=None):
 
     Range: expected - SLOPE_COLORMAP_RANGE% to expected + SLOPE_COLORMAP_RANGE%
     """
-    fig, ax = plt.subplots(figsize=(10, 2))
+    fig, ax = plt.subplots(figsize=(5, 2.5))
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
@@ -128,19 +128,19 @@ def create_slope_colorbar(save_path=None):
     ]
     cbar.set_ticks(tick_positions)
     cbar.set_ticklabels(tick_labels)
-    ax.tick_params(labelsize=9)
+    ax.tick_params(labelsize=14)
 
     title = (f"Piecewise Slope  |  "
              f"expected: {expected_pct:.1f}%  |  "
              f"range: \u00b1{range_pct:.1f}%")
-    cbar.set_label(title, fontsize=11, fontweight='bold')
+    cbar.set_label(title, fontsize=17, fontweight='bold')
 
     ax.annotate('More batter', xy=(0.05, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=8, color='blue', fontweight='bold')
+                ha='center', fontsize=12, color='blue', fontweight='bold')
     ax.annotate('On design', xy=(0.5, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=8, color='green', fontweight='bold')
+                ha='center', fontsize=12, color='green', fontweight='bold')
     ax.annotate('Less batter', xy=(0.95, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=8, color='red', fontweight='bold')
+                ha='center', fontsize=12, color='red', fontweight='bold')
 
     plt.tight_layout()
 
@@ -161,7 +161,7 @@ def create_new_slope_colorbar(save_path=None):
     Blue = top of wall further back than expected
     Red = top of wall further forward than expected
     """
-    fig, ax = plt.subplots(figsize=(10, 2))
+    fig, ax = plt.subplots(figsize=(5, 2.5))
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap='jet', norm=norm)
@@ -184,18 +184,18 @@ def create_new_slope_colorbar(save_path=None):
     ]
     cbar.set_ticks(tick_positions)
     cbar.set_ticklabels(tick_labels)
-    ax.tick_params(labelsize=9)
+    ax.tick_params(labelsize=14)
 
     title = (f"Top-of-Wall Slope Deviation from Expected ({expected_pct:.1f}%)  |  "
              f"range: \u00b1{range_pct:.1f}%")
-    cbar.set_label(title, fontsize=11, fontweight='bold')
+    cbar.set_label(title, fontsize=17, fontweight='bold')
 
     ax.annotate('Top further back', xy=(0.05, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=8, color='blue', fontweight='bold')
+                ha='center', fontsize=12, color='blue', fontweight='bold')
     ax.annotate('On design', xy=(0.5, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=8, color='green', fontweight='bold')
+                ha='center', fontsize=12, color='green', fontweight='bold')
     ax.annotate('Top further forward', xy=(0.95, 1.15), xycoords='axes fraction',
-                ha='center', fontsize=8, color='red', fontweight='bold')
+                ha='center', fontsize=12, color='red', fontweight='bold')
 
     plt.tight_layout()
 
@@ -222,7 +222,7 @@ def create_all_colorbars(save_dir="outputs/images/"):
     create_new_slope_colorbar(save_path=new_slope_path)
 
     # Stack all three into one image
-    fig, axes = plt.subplots(3, 1, figsize=(10, 7))
+    fig, axes = plt.subplots(3, 1, figsize=(5, 8))
 
     for ax_idx, (create_fn, title) in enumerate([
         (_draw_displacement_bar, "Displacement"),
@@ -258,9 +258,9 @@ def _draw_displacement_bar(ax):
     ]
     cbar.set_ticks(ticks)
     cbar.set_ticklabels(labels)
-    ax.tick_params(labelsize=8)
+    ax.tick_params(labelsize=12)
     cbar.set_label(f"Displacement from Expected Profile (batter: {expected_pct:.1f}%)",
-                   fontsize=10, fontweight='bold')
+                   fontsize=15, fontweight='bold')
 
 
 def _draw_slope_bar(ax):
@@ -283,9 +283,9 @@ def _draw_slope_bar(ax):
     ]
     cbar.set_ticks(ticks)
     cbar.set_ticklabels(labels)
-    ax.tick_params(labelsize=8)
+    ax.tick_params(labelsize=12)
     cbar.set_label(f"Piecewise Slope (expected: {expected_pct:.1f}%, range: \u00b1{r:.1f}%)",
-                   fontsize=10, fontweight='bold')
+                   fontsize=15, fontweight='bold')
 
 
 def _draw_new_slope_bar(ax):
@@ -308,9 +308,9 @@ def _draw_new_slope_bar(ax):
     ]
     cbar.set_ticks(ticks)
     cbar.set_ticklabels(labels)
-    ax.tick_params(labelsize=8)
+    ax.tick_params(labelsize=12)
     cbar.set_label(f"Top-of-Wall Deviation from Expected ({expected_pct:.1f}%)",
-                   fontsize=10, fontweight='bold')
+                   fontsize=15, fontweight='bold')
 
 
 if __name__ == "__main__":
