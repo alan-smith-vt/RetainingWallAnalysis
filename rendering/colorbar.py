@@ -168,30 +168,6 @@ def create_new_slope_colorbar(save_path=None):
     _save_or_show(fig, save_path)
 
 
-def create_all_colorbars(save_dir="outputs/images/"):
-    """Generate individual and combined legend images."""
-    os.makedirs(save_dir, exist_ok=True)
-
-    create_displacement_colorbar(save_path=os.path.join(save_dir, "legend_displacement.png"))
-    create_slope_colorbar(save_path=os.path.join(save_dir, "legend_slope.png"))
-    create_new_slope_colorbar(save_path=os.path.join(save_dir, "legend_new_slope.png"))
-
-    combined_path = os.path.join(save_dir, "legend_colorbars.png")
-
-    fig, axes = plt.subplots(3, 1, figsize=(10, 8))
-
-    for ax_idx, create_fn in enumerate([
-        _draw_displacement_bar,
-        _draw_slope_bar,
-        _draw_new_slope_bar,
-    ]):
-        create_fn(axes[ax_idx])
-
-    plt.tight_layout(h_pad=3.0)
-    fig.savefig(combined_path, dpi=150, bbox_inches='tight', transparent=True)
-    print(f"Saved: {combined_path}")
-    plt.close(fig)
-
 
 def _draw_displacement_bar(ax):
     """Draw asymmetric displacement colorbar onto an existing axes."""
@@ -331,6 +307,154 @@ def _draw_new_slope_bar(ax):
                     ha='center', fontsize=21, color=color, fontweight='bold')
     ax.set_xlabel(f"Top-of-Wall Deviation from Expected ({expected_pct:.1f}%)",
                   fontsize=22, fontweight='bold', labelpad=55)
+
+
+def _settlement_gradient(ax, max_in):
+    """Render a coolwarm gradient from 0 (blue) to max (red) for settlement."""
+    n = 512
+    values = np.linspace(0, 1, n)
+    colors = plt.cm.coolwarm(values)
+    ax.imshow(colors.reshape(1, -1, 4), aspect='auto',
+              extent=[0, max_in, 0, 1])
+    ax.set_yticks([])
+    ax.set_xlim(0, max_in)
+
+
+def _rotation_gradient(ax, range_pct):
+    """Render a symmetric coolwarm gradient for rotation (dZ/dX)."""
+    n = 512
+    values = np.linspace(0, 1, n)
+    colors = plt.cm.coolwarm(values)
+    ax.imshow(colors.reshape(1, -1, 4), aspect='auto',
+              extent=[-range_pct, range_pct, 0, 1])
+    ax.set_yticks([])
+    ax.set_xlim(-range_pct, range_pct)
+
+
+def _draw_settlement_bar(ax):
+    """Draw settlement colorbar: blue=0 (no settlement) to red=max settlement."""
+    try:
+        from config import SETTLEMENT_MAX_IN
+    except ImportError:
+        SETTLEMENT_MAX_IN = 1.0
+    max_in = SETTLEMENT_MAX_IN
+
+    _settlement_gradient(ax, max_in)
+
+    ticks = [0, max_in / 4, max_in / 2, 3 * max_in / 4, max_in]
+    labels = [
+        "0\"",
+        f"{max_in / 4:.2f}\"",
+        f"{max_in / 2:.2f}\"",
+        f"{3 * max_in / 4:.2f}\"",
+        f"{max_in:.2f}\"",
+    ]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([])
+    for i, (t, label) in enumerate(zip(ticks, labels)):
+        is_low = (i % 2 == 1)
+        tick_len = 14 if is_low else 8
+        label_y = -tick_len - 14
+        ax.annotate('', xy=(t, 0), xytext=(t, -tick_len),
+                    xycoords=('data', 'axes points'),
+                    textcoords=('data', 'axes points'),
+                    arrowprops=dict(arrowstyle='-', color='k', lw=1))
+        ax.annotate(label, xy=(t, label_y),
+                    xycoords=('data', 'axes points'),
+                    ha='center', va='top', fontsize=18)
+    ax.tick_params(axis='x', length=0)
+    positions = [(0.05, 'No settlement', 'blue'),
+                 (0.95, 'Max settlement', 'red')]
+    for i, (x, text, color) in enumerate(positions):
+        ax.annotate(text, xy=(x, 1.1), xycoords='axes fraction',
+                    ha='center', fontsize=21, color=color, fontweight='bold')
+    ax.set_xlabel("Settlement (relative to highest point on joint)",
+                  fontsize=22, fontweight='bold', labelpad=55)
+
+
+def _draw_rotation_bar(ax):
+    """Draw rotation colorbar: symmetric coolwarm around 0."""
+    try:
+        from config import ROTATION_MAX_PCT
+    except ImportError:
+        ROTATION_MAX_PCT = 2.0
+    range_pct = ROTATION_MAX_PCT
+
+    _rotation_gradient(ax, range_pct)
+
+    ticks = [-range_pct, -range_pct / 2, 0, range_pct / 2, range_pct]
+    labels = [
+        f"-{range_pct:.1f}%",
+        f"-{range_pct / 2:.1f}%",
+        "0%",
+        f"+{range_pct / 2:.1f}%",
+        f"+{range_pct:.1f}%",
+    ]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([])
+    for i, (t, label) in enumerate(zip(ticks, labels)):
+        is_low = (i % 2 == 1)
+        tick_len = 14 if is_low else 8
+        label_y = -tick_len - 14
+        ax.annotate('', xy=(t, 0), xytext=(t, -tick_len),
+                    xycoords=('data', 'axes points'),
+                    textcoords=('data', 'axes points'),
+                    arrowprops=dict(arrowstyle='-', color='k', lw=1))
+        ax.annotate(label, xy=(t, label_y),
+                    xycoords=('data', 'axes points'),
+                    ha='center', va='top', fontsize=18)
+    ax.tick_params(axis='x', length=0)
+    positions = [(0.05, 'Tilting left', 'blue'),
+                 (0.5, 'Level', 'grey'),
+                 (0.95, 'Tilting right', 'red')]
+    for i, (x, text, color) in enumerate(positions):
+        ax.annotate(text, xy=(x, 1.1), xycoords='axes fraction',
+                    ha='center', fontsize=21, color=color, fontweight='bold')
+    ax.set_xlabel("Joint Rotation (dZ/dX slope along joint)",
+                  fontsize=22, fontweight='bold', labelpad=55)
+
+
+def create_settlement_colorbar(save_path=None):
+    """Standalone settlement colorbar."""
+    fig, ax = plt.subplots(figsize=(10, 3))
+    _draw_settlement_bar(ax)
+    _save_or_show(fig, save_path)
+
+
+def create_rotation_colorbar(save_path=None):
+    """Standalone rotation colorbar."""
+    fig, ax = plt.subplots(figsize=(10, 3))
+    _draw_rotation_bar(ax)
+    _save_or_show(fig, save_path)
+
+
+def create_all_colorbars(save_dir="outputs/images/"):
+    """Generate individual and combined legend images."""
+    os.makedirs(save_dir, exist_ok=True)
+
+    create_displacement_colorbar(save_path=os.path.join(save_dir, "legend_displacement.png"))
+    create_slope_colorbar(save_path=os.path.join(save_dir, "legend_slope.png"))
+    create_new_slope_colorbar(save_path=os.path.join(save_dir, "legend_new_slope.png"))
+    create_settlement_colorbar(save_path=os.path.join(save_dir, "legend_settlement.png"))
+    create_rotation_colorbar(save_path=os.path.join(save_dir, "legend_rotation.png"))
+
+    combined_path = os.path.join(save_dir, "legend_colorbars.png")
+
+    fig, axes = plt.subplots(5, 1, figsize=(10, 14))
+
+    for ax_idx, create_fn in enumerate([
+        _draw_displacement_bar,
+        _draw_slope_bar,
+        _draw_new_slope_bar,
+        _draw_settlement_bar,
+        _draw_rotation_bar,
+    ]):
+        create_fn(axes[ax_idx])
+
+    plt.tight_layout(h_pad=3.0)
+    fig.savefig(combined_path, dpi=150, bbox_inches='tight', transparent=True)
+    print(f"Saved: {combined_path}")
+    plt.close(fig)
 
 
 if __name__ == "__main__":

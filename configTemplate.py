@@ -143,6 +143,10 @@ JOINT_SPLINE_SMOOTHING = 1.0    # splprep smoothing factor per joint
 JOINT_SPLINE_POINTS = 500       # Points along each fitted spline
 JOINT_MIN_TRACK_LENGTH = 5      # Minimum detections to keep a track
 
+# Settlement / rotation legend ranges
+SETTLEMENT_MAX_IN = 1.0         # Inches — max settlement for colorbar legend
+ROTATION_MAX_PCT = 2.0          # Percent — max rotation (dZ/dX * 100) for legend
+
 # Block dimensions (soft constraints for peak detection and tracking)
 BLOCK_HEIGHT_IN = 8             # Inches — nominal block height
 BLOCK_WIDTH_IN = 16             # Inches — nominal block width (half-offset per row)

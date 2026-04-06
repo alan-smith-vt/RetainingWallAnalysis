@@ -428,7 +428,7 @@ def save_joint_line_images(raster_hz, x_edges_aligned, z_edges, tracks_aligned,
                            total_m, z_extent, basename):
     """Render and save station-split joint line images."""
     x_c = (x_edges_aligned[:-1] + x_edges_aligned[1:]) / 2
-    z_c = (z_edges_aligned[:-1] + z_edges_aligned[1:]) / 2
+    z_c = (z_edges[:-1] + z_edges[1:]) / 2
 
     station_ranges = get_station_ranges()
 
