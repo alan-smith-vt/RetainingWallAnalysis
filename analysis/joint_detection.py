@@ -1,13 +1,19 @@
 """
-Joint detection — full wall pipeline.
+Joint detection — full wall pipeline (horizontal + vertical).
 
-Detects horizontal joint lines using surface normals, tracks them across
-sliding windows, fits splines, and computes settlement and rotation fields.
+Detects horizontal joint lines using |Nz| and vertical joint lines using
+Nx+ / Nx- separately. Tracks, fits splines, and computes displacement and
+rotation fields for each.
 
 Outputs station-split images for:
-  - settlement: Z_max - Z(x) per joint (blue=0, red=max)
-  - rotation: dZ/dX from spline derivative (symmetric coolwarm)
-  - joint_lines: Nz raster with tracked joint overlays
+  Horizontal:
+    - settlement: Z_max - Z(x) per joint (blue=0, red=max)
+    - rotation: dZ/dX (symmetric coolwarm)
+    - joint_lines: Nz raster with overlays
+  Vertical (Nx+ and Nx- separately):
+    - displacement: X(z) - X(base) (symmetric coolwarm)
+    - rotation: dX/dZ (symmetric coolwarm)
+    - joint_lines: Nx raster with overlays
 
 Run from repo root: python analysis/joint_detection.py
 """
@@ -61,10 +67,18 @@ RENDER_RESOLUTION   = _cfg('RENDER_RESOLUTION', 100)
 RENDER_DPI          = _cfg('RENDER_DPI', 10)
 MARKER_SIZE         = _cfg('MARKER_SIZE_DISPLACEMENTS', 500)
 
+# Vertical joint settings
+V_PEAK_MIN_HEIGHT   = 0.01
+V_WINDOW_WIDTH      = 1.0
+V_WINDOW_STEP       = 0.25
+V_MIN_TRACK_PEAKS   = 15
+V_SEARCH_DISTANCE   = 0.5   # bridge staggered brick gaps
+
 NORMALS_CACHE_DIR   = "outputs/point_clouds/unrolled"
 IMAGE_DIR           = "outputs/images"
 
 INFLUENCE_HALF_Z    = 8 * FEET_TO_METERS / 12  # ±8 inches in meters
+INFLUENCE_HALF_X    = 8 * FEET_TO_METERS / 12  # ±8 inches in meters
 
 
 def printf(msg):
@@ -287,6 +301,277 @@ def assign_points_to_tracks(points, fitted_tracks):
         settlement[upd_idx] = disp[update]
 
     return track_idx, spline_dzdx, settlement
+
+
+# ── Vertical joint pipeline ────────────────────────────────────────────────
+
+def rasterize_vertical(points, normals, resolution):
+    """Rasterize Nx+ and Nx- separately."""
+    x, z = points[:, 0], points[:, 2]
+    nx = normals[:, 0]
+
+    x_edges = np.arange(x.min(), x.max() + resolution, resolution)
+    z_edges = np.arange(z.min(), z.max() + resolution, resolution)
+
+    xi = np.clip(np.searchsorted(x_edges, x) - 1, 0, len(x_edges) - 2)
+    zi = np.clip(np.searchsorted(z_edges, z) - 1, 0, len(z_edges) - 2)
+
+    nc, nr = len(x_edges) - 1, len(z_edges) - 1
+    flat = zi * nc + xi
+    total = nr * nc
+
+    nx_pos = np.clip(nx, 0, None)
+    nx_neg = np.clip(-nx, 0, None)
+    pos_sum = np.bincount(flat, weights=nx_pos, minlength=total)
+    neg_sum = np.bincount(flat, weights=nx_neg, minlength=total)
+    counts = np.bincount(flat, minlength=total)
+
+    m = counts > 0
+    raster_pos = np.zeros(total)
+    raster_neg = np.zeros(total)
+    raster_pos[m] = pos_sum[m] / counts[m]
+    raster_neg[m] = neg_sum[m] / counts[m]
+
+    return raster_pos.reshape(nr, nc), raster_neg.reshape(nr, nc), x_edges, z_edges
+
+
+def detect_peaks_vertical(raster, x_edges, z_edges):
+    """Slide windows along Z, find peaks in X profiles."""
+    x_c = (x_edges[:-1] + x_edges[1:]) / 2
+    z_c = (z_edges[:-1] + z_edges[1:]) / 2
+    res = RASTER_RESOLUTION
+
+    min_dist_bins = max(1, int(PEAK_MIN_DIST_M / res))
+    win_rows = max(1, int(V_WINDOW_WIDTH / res))
+    step_rows = max(1, int(V_WINDOW_STEP / res))
+
+    detections = []
+    row = 0
+    while row < raster.shape[0]:
+        re_ = min(row + win_rows, raster.shape[0])
+        avg = np.mean(raster[row:re_, :], axis=0)
+        cz = np.mean(z_c[row:re_])
+
+        if len(avg) >= 3:
+            sm = gaussian_filter1d(avg, sigma=GAUSSIAN_SIGMA)
+            pi, _ = find_peaks(sm, height=V_PEAK_MIN_HEIGHT, distance=min_dist_bins)
+            if len(pi) > 0:
+                detections.append((cz, x_c[pi]))
+        row += step_rows
+
+    return detections
+
+
+def link_vertical_tracks(detections):
+    """Link vertical joint peaks with search distance for staggered gaps.
+
+    Detections are (window_z, peak_x_array). Returns list of (x, z) tracks.
+    """
+    if not detections:
+        return []
+
+    wc_vals = np.array([d[0] for d in detections])
+
+    finished = []
+    wc0, pp0 = detections[0]
+    active = [{'w': [wc0], 'p': [pp0[i]], 'last_det': 0}
+              for i in range(len(pp0))]
+
+    for det_idx in range(1, len(detections)):
+        wc, pp = detections[det_idx]
+        used_p = set()
+
+        if active and len(pp) > 0:
+            eligible = [(ei, t) for ei, t in enumerate(active)
+                        if abs(wc - wc_vals[t['last_det']]) <= V_SEARCH_DISTANCE + 1e-9]
+
+            if eligible:
+                elig_idx, elig_tracks = zip(*eligible)
+                elig_pos = np.array([t['p'][-1] for t in elig_tracks])
+                dists = np.abs(elig_pos[:, None] - pp[None, :])
+
+                matched = set()
+                for fi in np.argsort(dists.ravel()):
+                    ei, pi = divmod(int(fi), len(pp))
+                    if ei in matched or pi in used_p:
+                        continue
+                    if dists[ei, pi] > MATCH_TOLERANCE:
+                        break
+                    t = elig_tracks[ei]
+                    t['w'].append(wc)
+                    t['p'].append(pp[pi])
+                    t['last_det'] = det_idx
+                    matched.add(ei)
+                    used_p.add(pi)
+
+        new_active = []
+        for t in active:
+            if abs(wc - wc_vals[t['last_det']]) > V_SEARCH_DISTANCE + 1e-9:
+                finished.append(t)
+            else:
+                new_active.append(t)
+
+        for pi in range(len(pp)):
+            if pi not in used_p:
+                new_active.append({'w': [wc], 'p': [pp[pi]], 'last_det': det_idx})
+
+        active = new_active
+
+    finished.extend(active)
+
+    # Convert to (x, z) tracks — w=z, p=x
+    tracks = []
+    for t in finished:
+        if len(t['w']) >= V_MIN_TRACK_PEAKS:
+            tracks.append(list(zip(t['p'], t['w'])))
+    return tracks
+
+
+def fit_vertical_tracks(tracks):
+    """Fit splines to vertical tracks."""
+    fitted = []
+    for track in tracks:
+        x = np.array([p[0] for p in track])
+        z = np.array([p[1] for p in track])
+        entry = {
+            'x': x, 'z': z,
+            'x_min': x.min(), 'x_max': x.max(),
+            'z_min': z.min(), 'z_max': z.max(),
+            'mean_x': x.mean(), 'mean_z': z.mean(),
+            'tck': None,
+        }
+        if len(z) >= 4:
+            try:
+                tck, _ = splprep([x, z], s=SPLINE_SMOOTHING)
+                entry['tck'] = tck
+            except Exception:
+                pass
+        fitted.append(entry)
+
+    fitted.sort(key=lambda t: t['mean_x'])
+    return fitted
+
+
+def assign_points_vertical(points, fitted_tracks):
+    """Assign points to vertical tracks within ±8in X influence.
+
+    Displacement = X(z) - X(base) from spline.
+    Rotation = dX/dZ from spline derivative.
+    """
+    N = len(points)
+    px, pz = points[:, 0], points[:, 2]
+
+    track_idx = np.full(N, -1, dtype=int)
+    best_dist = np.full(N, np.inf)
+    spline_dxdz = np.full(N, np.nan)
+    displacement = np.full(N, np.nan)
+
+    for i, track in enumerate(tqdm(fitted_tracks, desc="  Assigning points (vert)")):
+        x_margin = INFLUENCE_HALF_X + np.ptp(track['x'])
+        candidates = ((pz >= track['z_min']) & (pz <= track['z_max']) &
+                       (px >= track['mean_x'] - x_margin) &
+                       (px <= track['mean_x'] + x_margin))
+        if not np.any(candidates):
+            continue
+
+        cand_idx = np.where(candidates)[0]
+        z_range = track['z_max'] - track['z_min']
+
+        if track['tck'] is not None and z_range > 0:
+            tck = track['tck']
+            u_pts = np.clip((pz[cand_idx] - track['z_min']) / z_range, 0, 1)
+            x_eval, z_eval = splev(u_pts, tck)
+            dx_du, dz_du = splev(u_pts, tck, der=1)
+
+            with np.errstate(divide='ignore', invalid='ignore'):
+                dxdz = np.where(np.abs(dz_du) > 1e-10, dx_du / dz_du, 0.0)
+
+            x_base, _ = splev(0.0, tck)
+            disp = x_eval - x_base
+        else:
+            x_eval = np.full(len(cand_idx), track['mean_x'])
+            dxdz = np.zeros(len(cand_idx))
+            disp = np.zeros(len(cand_idx))
+
+        x_dist = np.abs(px[cand_idx] - x_eval)
+        in_zone = x_dist <= INFLUENCE_HALF_X
+        update = in_zone & (x_dist < best_dist[cand_idx])
+
+        upd_idx = cand_idx[update]
+        best_dist[upd_idx] = x_dist[update]
+        track_idx[upd_idx] = i
+        spline_dxdz[upd_idx] = dxdz[update]
+        displacement[upd_idx] = disp[update]
+
+    return track_idx, spline_dxdz, displacement
+
+
+def run_vertical_pipeline(label, raster, x_edges, z_edges, points,
+                          px_aligned, pz_zeroed, z_extent, total_m,
+                          x_edges_aligned, wall_id, px_raw):
+    """Run full vertical pipeline for one normal direction (Nx+ or Nx-)."""
+    tag = label.lower().replace('+', 'pos').replace('-', 'neg')
+    printf("--- Vertical joints (%s) ---" % label)
+
+    printf("  Detecting peaks...")
+    detections = detect_peaks_vertical(raster, x_edges, z_edges)
+    n_peaks = sum(len(d[1]) for d in detections)
+    printf("  %d windows, %d total peaks" % (len(detections), n_peaks))
+
+    printf("  Linking peaks into tracks...")
+    tracks = link_vertical_tracks(detections)
+    printf("  %d tracks (>= %d peaks)" % (len(tracks), V_MIN_TRACK_PEAKS))
+
+    printf("  Fitting splines...")
+    fitted = fit_vertical_tracks(tracks)
+    n_splines = sum(1 for t in fitted if t['tck'] is not None)
+    printf("  %d tracks with splines" % n_splines)
+
+    printf("  Assigning points to tracks...")
+    track_idx, dxdz, disp = assign_points_vertical(points, fitted)
+    n_assigned = np.sum(track_idx >= 0)
+    printf("  %d/%d points assigned" % (n_assigned, len(points)))
+
+    assigned = track_idx >= 0
+
+    # Align tracks for joint line images
+    if total_m is not None:
+        x_min, x_max = px_raw.min(), px_raw.max()
+        x_span = x_max - x_min
+        start_m = STATION_START_OFF * 0.0254
+        data_range = total_m - start_m - STATION_END_OFF * 0.0254
+        scale = data_range / x_span if x_span > 0 else 1
+        tracks_aligned = []
+        for track in tracks:
+            tracks_aligned.append(
+                [((x - x_min) * scale + start_m, z) for x, z in track])
+    else:
+        tracks_aligned = tracks
+
+    # Joint lines
+    printf("  Rendering joint line images...")
+    z_edges_zeroed = z_edges - points[:, 2].min()
+    save_joint_line_images(raster, x_edges_aligned, z_edges_zeroed,
+                           tracks_aligned, total_m, z_extent,
+                           "vjoint_lines_%s_%s" % (tag, wall_id))
+
+    # Displacement (symmetric coolwarm)
+    if np.any(assigned):
+        printf("  Rendering displacement images...")
+        colors_disp = np.zeros((len(points), 3))
+        colors_disp[assigned] = rotation_colors(disp[assigned])  # symmetric
+        colors_disp[~assigned] = [0.05, 0.05, 0.05]
+        save_station_images(px_aligned, pz_zeroed, colors_disp, total_m,
+                            z_extent, "vdisp_%s_%s" % (tag, wall_id))
+
+        printf("  Rendering rotation images...")
+        colors_rot = np.zeros((len(points), 3))
+        colors_rot[assigned] = rotation_colors(dxdz[assigned])
+        colors_rot[~assigned] = [0.05, 0.05, 0.05]
+        save_station_images(px_aligned, pz_zeroed, colors_rot, total_m,
+                            z_extent, "vrot_%s_%s" % (tag, wall_id))
+
+    return track_idx, disp, dxdz
 
 
 # ── Station alignment ──────────────────────────────────────────────────────
@@ -589,9 +874,11 @@ def main():
                                tracks_aligned, total_m, z_extent,
                                "joint_lines_%s" % wall_id)
 
-        # ── Generate legends with actual data ranges ──────────────────────
+        # ── Generate horizontal legends ──────────────────────────────────
         if np.any(assigned):
-            from rendering.colorbar import create_settlement_colorbar, create_rotation_colorbar
+            from rendering.colorbar import (create_settlement_colorbar,
+                create_rotation_colorbar, create_vdisp_colorbar,
+                create_vrot_colorbar)
 
             valid_settle = settle[assigned]
             valid_settle = valid_settle[~np.isnan(valid_settle)]
@@ -607,6 +894,59 @@ def main():
             create_rotation_colorbar(
                 rot_max,
                 save_path=os.path.join(IMAGE_DIR, "legend_rotation.png"))
+
+        # ── Vertical joints ───────────────────────────────────────────────
+        printf("Rasterizing Nx+ / Nx-...")
+        raster_pos, raster_neg, vx_edges, vz_edges = rasterize_vertical(
+            points, normals, RASTER_RESOLUTION)
+
+        # Align vertical raster edges too
+        if total_m is not None:
+            x_min, x_max = px.min(), px.max()
+            x_span = x_max - x_min
+            start_m = STATION_START_OFF * 0.0254
+            data_range = total_m - start_m - STATION_END_OFF * 0.0254
+            scale = data_range / x_span if x_span > 0 else 1
+            vx_edges_aligned = (vx_edges - x_min) * scale + start_m
+        else:
+            vx_edges_aligned = vx_edges
+
+        vt_pos_idx, vt_pos_disp, vt_pos_dxdz = run_vertical_pipeline(
+            "Nx+", raster_pos, vx_edges, vz_edges, points,
+            px_aligned, pz_zeroed, z_extent, total_m,
+            vx_edges_aligned, wall_id, px)
+
+        vt_neg_idx, vt_neg_disp, vt_neg_dxdz = run_vertical_pipeline(
+            "Nx-", raster_neg, vx_edges, vz_edges, points,
+            px_aligned, pz_zeroed, z_extent, total_m,
+            vx_edges_aligned, wall_id, px)
+
+        # ── Generate vertical legends ────────────────────────────────────
+        from rendering.colorbar import create_vdisp_colorbar, create_vrot_colorbar
+
+        # Combine both directions for legend ranges
+        all_vdisp = []
+        all_vrot = []
+        for vidx, vd, vr in [(vt_pos_idx, vt_pos_disp, vt_pos_dxdz),
+                              (vt_neg_idx, vt_neg_disp, vt_neg_dxdz)]:
+            va = vidx >= 0
+            if np.any(va):
+                d = vd[va]; d = d[~np.isnan(d)]; all_vdisp.append(d)
+                r = vr[va]; r = r[~np.isnan(r)]; all_vrot.append(r)
+
+        if all_vdisp:
+            vdisp_all = np.concatenate(all_vdisp)
+            vdisp_max = max(0.001, np.percentile(np.abs(vdisp_all), 95))
+            create_vdisp_colorbar(
+                vdisp_max,
+                save_path=os.path.join(IMAGE_DIR, "legend_vdisp.png"))
+
+        if all_vrot:
+            vrot_all = np.concatenate(all_vrot)
+            vrot_max = max(0.001, np.percentile(np.abs(vrot_all), 95))
+            create_vrot_colorbar(
+                vrot_max,
+                save_path=os.path.join(IMAGE_DIR, "legend_vrot.png"))
 
     printf("Done.")
 

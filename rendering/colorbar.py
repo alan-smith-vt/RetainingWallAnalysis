@@ -426,6 +426,102 @@ def create_rotation_colorbar(max_rotation, save_path=None):
     _save_or_show(fig, save_path)
 
 
+def _draw_vdisp_bar(ax, max_disp_m):
+    """Draw vertical displacement colorbar: symmetric coolwarm.
+
+    max_disp_m: 95th percentile |X(z) - X(base)| in meters.
+    """
+    max_in = max_disp_m * METERS_TO_FEET * 12
+
+    _rotation_gradient(ax, max_in)  # symmetric gradient works here
+
+    ticks = [-max_in, -max_in / 2, 0, max_in / 2, max_in]
+    labels = [
+        f'-{max_in:.3f}"',
+        f'-{max_in / 2:.3f}"',
+        '0"',
+        f'+{max_in / 2:.3f}"',
+        f'+{max_in:.3f}"',
+    ]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([])
+    for i, (t, label) in enumerate(zip(ticks, labels)):
+        is_low = (i % 2 == 1)
+        tick_len = 14 if is_low else 8
+        label_y = -tick_len - 14
+        ax.annotate('', xy=(t, 0), xytext=(t, -tick_len),
+                    xycoords=('data', 'axes points'),
+                    textcoords=('data', 'axes points'),
+                    arrowprops=dict(arrowstyle='-', color='k', lw=1))
+        ax.annotate(label, xy=(t, label_y),
+                    xycoords=('data', 'axes points'),
+                    ha='center', va='top', fontsize=18)
+    ax.tick_params(axis='x', length=0)
+    positions = [(0.05, 'Shifted left', 'blue'),
+                 (0.5, 'On base', 'grey'),
+                 (0.95, 'Shifted right', 'red')]
+    for i, (x, text, color) in enumerate(positions):
+        ax.annotate(text, xy=(x, 1.1), xycoords='axes fraction',
+                    ha='center', fontsize=21, color=color, fontweight='bold')
+    ax.set_xlabel("Vertical Joint Displacement (X deviation from base)",
+                  fontsize=22, fontweight='bold', labelpad=55)
+
+
+def _draw_vrot_bar(ax, max_rotation):
+    """Draw vertical rotation colorbar: symmetric coolwarm.
+
+    max_rotation: 95th percentile |dX/dZ| (dimensionless).
+    """
+    range_pct = max_rotation * 100
+
+    _rotation_gradient(ax, range_pct)
+
+    ticks = [-range_pct, -range_pct / 2, 0, range_pct / 2, range_pct]
+    labels = [
+        f"-{range_pct:.2f}%",
+        f"-{range_pct / 2:.2f}%",
+        "0%",
+        f"+{range_pct / 2:.2f}%",
+        f"+{range_pct:.2f}%",
+    ]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([])
+    for i, (t, label) in enumerate(zip(ticks, labels)):
+        is_low = (i % 2 == 1)
+        tick_len = 14 if is_low else 8
+        label_y = -tick_len - 14
+        ax.annotate('', xy=(t, 0), xytext=(t, -tick_len),
+                    xycoords=('data', 'axes points'),
+                    textcoords=('data', 'axes points'),
+                    arrowprops=dict(arrowstyle='-', color='k', lw=1))
+        ax.annotate(label, xy=(t, label_y),
+                    xycoords=('data', 'axes points'),
+                    ha='center', va='top', fontsize=18)
+    ax.tick_params(axis='x', length=0)
+    positions = [(0.05, 'Leaning left', 'blue'),
+                 (0.5, 'Plumb', 'grey'),
+                 (0.95, 'Leaning right', 'red')]
+    for i, (x, text, color) in enumerate(positions):
+        ax.annotate(text, xy=(x, 1.1), xycoords='axes fraction',
+                    ha='center', fontsize=21, color=color, fontweight='bold')
+    ax.set_xlabel("Vertical Joint Rotation (dX/dZ along joint)",
+                  fontsize=22, fontweight='bold', labelpad=55)
+
+
+def create_vdisp_colorbar(max_disp_m, save_path=None):
+    """Standalone vertical displacement colorbar."""
+    fig, ax = plt.subplots(figsize=(10, 3))
+    _draw_vdisp_bar(ax, max_disp_m)
+    _save_or_show(fig, save_path)
+
+
+def create_vrot_colorbar(max_rotation, save_path=None):
+    """Standalone vertical rotation colorbar."""
+    fig, ax = plt.subplots(figsize=(10, 3))
+    _draw_vrot_bar(ax, max_rotation)
+    _save_or_show(fig, save_path)
+
+
 def create_all_colorbars(save_dir="outputs/images/"):
     """Generate individual and combined legend images.
 
