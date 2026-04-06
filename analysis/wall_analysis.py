@@ -97,25 +97,59 @@ def getCrossSection(slicePoints, sliceColors, expectedSlopeLine, linePoints, k, 
 
     slicePoints: point cloud slice (rotated space)
     sliceColors: displacement-colored RGB (0-1 float) for slicePoints
-    expectedSlopeLine: expected slope reference line (rotated space)
+    expectedSlopeLine: expected slope reference line (rotated space) — full grid
     linePoints: fitted piecewise slope line
     k: vertical offset index for stacking
     slopeColor: RGB (0-1) for fitted slope line
-    """
-    # Expected slope: project to YZ plane (X=0) with white color
-    exp_yz = expectedSlopeLine.copy()
-    exp_yz[:, 0] = np.mean(slicePoints[:, 0])  # flatten to single X
 
-    points = np.vstack([slicePoints, exp_yz, linePoints])
-    points[:, 1] = points[:, 1] - np.min(points[:, 1]) - k
+    Returns (points, colors, exp_points, exp_colors) where exp_* are the
+    expected slope line separately for independent export.
+    """
+    # Expected slope: take one column (first X) and densify 10x
+    unique_x = np.unique(expectedSlopeLine[:, 0])
+    first_x_mask = expectedSlopeLine[:, 0] == unique_x[0]
+    base_yz = expectedSlopeLine[first_x_mask]
+    z_min, z_max = base_yz[:, 2].min(), base_yz[:, 2].max()
+    y_base = base_yz[:, 1].min()  # Y at bottom of expected slope
+
+    # 1000 points along the expected slope (10x the original 100)
+    n_dense = 1000
+    exp_z_dense = np.linspace(z_min, z_max, n_dense)
+    exp_y_dense = np.interp(exp_z_dense, base_yz[:, 2], base_yz[:, 1])
+    mean_x = np.mean(slicePoints[:, 0])
+    exp_yz = np.column_stack([
+        np.full(n_dense, mean_x),
+        exp_y_dense,
+        exp_z_dense,
+    ])
+
+    # 0% slope (vertical line) — same Z range, constant Y at base
+    vert_yz = np.column_stack([
+        np.full(n_dense, mean_x),
+        np.full(n_dense, y_base),
+        exp_z_dense,
+    ])
+
+    all_ref = np.vstack([slicePoints, exp_yz, vert_yz, linePoints])
+    y_offset = np.min(all_ref[:, 1])
+
+    points = np.vstack([slicePoints, exp_yz, vert_yz, linePoints])
+    points[:, 1] = points[:, 1] - y_offset - k
+
+    # Separate expected slope and vertical with same offset
+    exp_points = exp_yz.copy()
+    exp_points[:, 1] = exp_points[:, 1] - y_offset - k
+    vert_points = vert_yz.copy()
+    vert_points[:, 1] = vert_points[:, 1] - y_offset - k
 
     # All colors as 0-255 uint8
     colors_slice = np.clip(sliceColors * 255, 0, 255).astype(np.uint8)
-    colors_exp = np.full_like(exp_yz, 255, dtype=np.uint8)
+    colors_exp = np.full((n_dense, 3), 255, dtype=np.uint8)
+    colors_vert = np.full((n_dense, 3), 255, dtype=np.uint8)
     colors_line = np.tile((np.array(slopeColor) * 255).astype(np.uint8), (len(linePoints), 1))
 
-    colors = np.vstack([colors_slice, colors_exp, colors_line])
-    return points, colors
+    colors = np.vstack([colors_slice, colors_exp, colors_vert, colors_line])
+    return points, colors, exp_points, colors_exp, vert_points, colors_vert
 
 
 def fixSpacing(points, spacing=1):
@@ -574,9 +608,13 @@ if __name__ == '__main__':
 
             points_temp = []
             colors_temp = []
+            exp_points_temp = []
+            exp_colors_temp = []
+            vert_points_temp = []
+            vert_colors_temp = []
             cs_idx = 0
             for k in range(0, len(pc_slices_rotated), 2):
-                pts, cols = getCrossSection(
+                pts, cols, exp_pts, exp_cols, vrt_pts, vrt_cols = getCrossSection(
                     pc_slices_rotated[k],
                     pc_slice_colors_list[k],
                     expected_slope_lines_rotated[k],
@@ -586,10 +624,22 @@ if __name__ == '__main__':
                 )
                 points_temp.append(pts)
                 colors_temp.append(cols)
+                exp_points_temp.append(exp_pts)
+                exp_colors_temp.append(exp_cols)
+                vert_points_temp.append(vrt_pts)
+                vert_colors_temp.append(vrt_cols)
                 cs_idx += 1
             pts = np.vstack(points_temp)
             cols = np.vstack(colors_temp)
             savePoints(pts, "outputs/point_clouds/unrolled/cross_section_%d.ply" % wall_id, colors=cols)
+
+            exp_pts = np.vstack(exp_points_temp)
+            exp_cols = np.vstack(exp_colors_temp)
+            savePoints(exp_pts, "outputs/point_clouds/unrolled/cross_section_expected_%d.ply" % wall_id, colors=exp_cols)
+
+            vrt_pts = np.vstack(vert_points_temp)
+            vrt_cols = np.vstack(vert_colors_temp)
+            savePoints(vrt_pts, "outputs/point_clouds/unrolled/cross_section_vertical_%d.ply" % wall_id, colors=vrt_cols)
 
             if thresh is None:
                 savePoints(pc_slices, "outputs/point_clouds/original/displacement_%d_%.1f.ply" % (wall_id, spacing), colors=pc_slice_colors,
