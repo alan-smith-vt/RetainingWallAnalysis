@@ -62,6 +62,7 @@ DEBUG_RANGE = _cfg('CURVE_DEBUG_RANGE', 2.0)
 
 def rasterize(points, normals, resolution):
     x, z = points[:, 0], points[:, 2]
+    nx = normals[:, 0]
     x_edges = np.arange(x.min(), x.max() + resolution, resolution)
     z_edges = np.arange(z.min(), z.max() + resolution, resolution)
 
@@ -73,17 +74,25 @@ def rasterize(points, normals, resolution):
     total = n_rows * n_cols
 
     hz_sum = np.bincount(flat, weights=np.abs(normals[:, 2]), minlength=total)
-    vt_sum = np.bincount(flat, weights=np.abs(normals[:, 0]), minlength=total)
     counts = np.bincount(flat, minlength=total)
+
+    # Separate Nx+ (right-facing) and Nx- (left-facing)
+    nx_pos = np.clip(nx, 0, None)   # only positive Nx
+    nx_neg = np.clip(-nx, 0, None)  # only negative Nx (flipped to positive)
+    vt_pos_sum = np.bincount(flat, weights=nx_pos, minlength=total)
+    vt_neg_sum = np.bincount(flat, weights=nx_neg, minlength=total)
 
     m = counts > 0
     raster_hz = np.zeros(total)
-    raster_vt = np.zeros(total)
+    raster_vt_pos = np.zeros(total)
+    raster_vt_neg = np.zeros(total)
     raster_hz[m] = hz_sum[m] / counts[m]
-    raster_vt[m] = vt_sum[m] / counts[m]
+    raster_vt_pos[m] = vt_pos_sum[m] / counts[m]
+    raster_vt_neg[m] = vt_neg_sum[m] / counts[m]
 
     return (raster_hz.reshape(n_rows, n_cols),
-            raster_vt.reshape(n_rows, n_cols),
+            raster_vt_pos.reshape(n_rows, n_cols),
+            raster_vt_neg.reshape(n_rows, n_cols),
             x_edges, z_edges)
 
 
@@ -224,14 +233,14 @@ def track_adjacent(detections, params):
 def tracks_to_xz(tracks, mode):
     """Convert generic w/p tracks to x/z tracks for plotting.
 
-    Horizontal: w=x, p=z.  Vertical: w=z, p=x.
+    Horizontal: w=x, p=z.  Vertical (pos/neg): w=z, p=x.
     """
     result = []
     for t in tracks:
         if mode == 'horizontal':
             result.append({'x': t['w'], 'z': t['p'], 's': t['s'],
                            'mz': np.mean(t['p'])})
-        else:
+        else:  # vertical_pos or vertical_neg
             result.append({'x': t['p'], 'z': t['w'], 's': t['s'],
                            'mz': np.mean(t['w'])})
     return result
@@ -288,27 +297,34 @@ def fig_to_base64(fig):
     return base64.b64encode(buf.read()).decode('utf-8')
 
 
-def make_raster_plot(raster_hz, raster_vt, x_edges, z_edges, params, mode):
+def make_raster_plot(raster_hz, raster_vt_pos, raster_vt_neg, x_edges, z_edges, params, mode):
     xc = (x_edges[:-1] + x_edges[1:]) / 2
     zc = (z_edges[:-1] + z_edges[1:]) / 2
     ext = [xc[0], xc[-1], zc[0], zc[-1]]
 
-    fig, axes = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
     im0 = axes[0].imshow(raster_hz, aspect='auto', origin='lower',
                          extent=ext, cmap='hot', interpolation='nearest')
     plt.colorbar(im0, ax=axes[0], label='|Nz|', shrink=0.8)
     axes[0].set_ylabel("Z (m)")
     axes[0].set_title("Horizontal Joint Score (|Nz|)")
 
-    im1 = axes[1].imshow(raster_vt, aspect='auto', origin='lower',
+    im1 = axes[1].imshow(raster_vt_pos, aspect='auto', origin='lower',
                          extent=ext, cmap='hot', interpolation='nearest')
-    plt.colorbar(im1, ax=axes[1], label='|Nx|', shrink=0.8)
-    axes[1].set_xlabel("X (m)")
+    plt.colorbar(im1, ax=axes[1], label='Nx+', shrink=0.8)
     axes[1].set_ylabel("Z (m)")
-    axes[1].set_title("Vertical Joint Score (|Nx|)")
+    axes[1].set_title("Vertical Joint Score (Nx+, right-facing)")
+
+    im2 = axes[2].imshow(raster_vt_neg, aspect='auto', origin='lower',
+                         extent=ext, cmap='hot', interpolation='nearest')
+    plt.colorbar(im2, ax=axes[2], label='Nx-', shrink=0.8)
+    axes[2].set_xlabel("X (m)")
+    axes[2].set_ylabel("Z (m)")
+    axes[2].set_title("Vertical Joint Score (Nx-, left-facing)")
 
     # Highlight which raster is active
-    active_idx = 0 if mode == 'horizontal' else 1
+    active_map = {'horizontal': 0, 'vertical_pos': 1, 'vertical_neg': 2}
+    active_idx = active_map.get(mode, 0)
     for i, ax in enumerate(axes):
         if i == active_idx:
             for spine in ax.spines.values():
@@ -463,11 +479,14 @@ def update():
     pts = STATE['points']
     normals = STATE['normals']
 
-    raster_hz, raster_vt, xe, ze = rasterize(pts, normals, params['raster_resolution'])
+    raster_hz, raster_vt_pos, raster_vt_neg, xe, ze = rasterize(pts, normals, params['raster_resolution'])
 
     # Pick the right raster and detection function based on mode
-    if mode == 'vertical':
-        active_raster = raster_vt
+    if mode == 'vertical_pos':
+        active_raster = raster_vt_pos
+        detections = detect_peaks_vertical(active_raster, xe, ze, params)
+    elif mode == 'vertical_neg':
+        active_raster = raster_vt_neg
         detections = detect_peaks_vertical(active_raster, xe, ze, params)
     else:
         active_raster = raster_hz
@@ -484,7 +503,7 @@ def update():
     n_cracks = len([t for t in tracks_xz if t['label'] == 'crack'])
 
     return jsonify({
-        'raster': make_raster_plot(raster_hz, raster_vt, xe, ze, params, mode),
+        'raster': make_raster_plot(raster_hz, raster_vt_pos, raster_vt_neg, xe, ze, params, mode),
         'profiles': make_profiles_plot(active_raster, xe, ze, detections, params, mode),
         'tracked': make_tracked_plot(active_raster, xe, ze, tracks_xz, splines, params, mode),
         'stats': {
@@ -538,8 +557,8 @@ def main():
     STATE['points'] = points
     STATE['normals'] = normals
 
-    print("\n  Open http://localhost:5000 in your browser\n")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    print("\n  Open http://localhost:5555 in your browser\n")
+    app.run(host='0.0.0.0', port=5555, debug=False)
 
 
 if __name__ == '__main__':

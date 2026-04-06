@@ -59,7 +59,8 @@
     <h2>Joint Direction</h2>
     <div class="mode-toggle">
       <button id="mode_horizontal" class="active" onclick="setMode('horizontal')">Horizontal</button>
-      <button id="mode_vertical" onclick="setMode('vertical')">Vertical</button>
+      <button id="mode_vertical_pos" onclick="setMode('vertical_pos')">Vertical Nx+</button>
+      <button id="mode_vertical_neg" onclick="setMode('vertical_neg')">Vertical Nx-</button>
     </div>
 
     <h2>Rasterization</h2>
@@ -192,7 +193,8 @@ function updateLabel(id) {
 function setMode(mode) {
   currentMode = mode;
   document.getElementById('mode_horizontal').className = mode === 'horizontal' ? 'active' : '';
-  document.getElementById('mode_vertical').className = mode === 'vertical' ? 'active' : '';
+  document.getElementById('mode_vertical_pos').className = mode === 'vertical_pos' ? 'active' : '';
+  document.getElementById('mode_vertical_neg').className = mode === 'vertical_neg' ? 'active' : '';
   scheduleUpdate();
 }
 
