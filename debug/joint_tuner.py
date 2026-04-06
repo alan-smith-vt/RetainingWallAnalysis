@@ -48,6 +48,7 @@ DEFAULTS = {
     'window_width':      _cfg('JOINT_WINDOW_WIDTH', 1.0),
     'window_step':       _cfg('JOINT_WINDOW_STEP', 0.5),
     'match_tolerance':   _cfg('JOINT_MATCH_TOLERANCE', 0.05),
+    'search_distance':   0.5,
     'min_track_length':  _cfg('JOINT_MIN_TRACK_LENGTH', 5),
     'spline_smoothing':  _cfg('JOINT_SPLINE_SMOOTHING', 1.0),
     'block_height_in':   _cfg('BLOCK_HEIGHT_IN', 8),
@@ -168,55 +169,70 @@ def detect_peaks_vertical(raster, x_edges, z_edges, params):
 
 
 def track_adjacent(detections, params):
-    """Link peaks between adjacent windows only.
+    """Link peaks across windows with a configurable search distance.
 
-    Works for both horizontal and vertical modes — the first element of each
-    detection is the window center (x for horizontal, z for vertical) and the
-    second is the array of peak positions in the other axis.
+    For each active track, look ahead up to search_distance (in meters along
+    the window axis) for the closest matching peak within match_tolerance.
+    This handles intermittent signals like staggered vertical joints where
+    the same joint skips every other brick row.
     """
     tol = params['match_tolerance']
     min_len = int(params['min_track_length'])
+    search_dist = params.get('search_distance', 0.0)
 
     if not detections:
         return []
 
+    # Extract window-center positions for distance checks
+    wc_vals = np.array([d[0] for d in detections])
+
     finished = []
     wc0, pp0, ps0 = detections[0]
-    # Each track stores 'w' (window-axis coords) and 'p' (peak-axis coords)
-    active = [{'w': [wc0], 'p': [pp0[i]], 's': [ps0[i]]} for i in range(len(pp0))]
+    active = [{'w': [wc0], 'p': [pp0[i]], 's': [ps0[i]], 'last_det': 0}
+              for i in range(len(pp0))]
 
     for det_idx in range(1, len(detections)):
         wc, pp, ps = detections[det_idx]
-        new_active = []
         used_p = set()
 
+        # Try to match eligible active tracks to current peaks
         if active and len(pp) > 0:
-            active_pos = np.array([t['p'][-1] for t in active])
-            dists = np.abs(active_pos[:, None] - pp[None, :])
+            eligible = [(ti, t) for ti, t in enumerate(active)
+                        if abs(wc - wc_vals[t['last_det']]) <= search_dist + 1e-9]
 
-            used_t = set()
-            for fi in np.argsort(dists.ravel()):
-                ti, pi = divmod(int(fi), len(pp))
-                if ti in used_t or pi in used_p:
-                    continue
-                if dists[ti, pi] > tol:
-                    break
-                active[ti]['w'].append(wc)
-                active[ti]['p'].append(pp[pi])
-                active[ti]['s'].append(ps[pi])
-                new_active.append(active[ti])
-                used_t.add(ti)
-                used_p.add(pi)
+            if eligible:
+                elig_idx, elig_tracks = zip(*eligible)
+                elig_pos = np.array([t['p'][-1] for t in elig_tracks])
+                dists = np.abs(elig_pos[:, None] - pp[None, :])
 
-            for ti in range(len(active)):
-                if ti not in used_t:
-                    finished.append(active[ti])
-        else:
-            finished.extend(active)
+                matched_tracks = set()
+                for fi in np.argsort(dists.ravel()):
+                    ei, pi = divmod(int(fi), len(pp))
+                    if ei in matched_tracks or pi in used_p:
+                        continue
+                    if dists[ei, pi] > tol:
+                        break
+                    t = elig_tracks[ei]
+                    t['w'].append(wc)
+                    t['p'].append(pp[pi])
+                    t['s'].append(ps[pi])
+                    t['last_det'] = det_idx
+                    matched_tracks.add(ei)
+                    used_p.add(pi)
 
+        # Expire tracks that have exceeded search distance, keep the rest
+        new_active = []
+        for t in active:
+            if abs(wc - wc_vals[t['last_det']]) > search_dist + 1e-9:
+                finished.append(t)
+            else:
+                new_active.append(t)
+
+        # Unmatched peaks start new tracks
         for pi in range(len(pp)):
             if pi not in used_p:
-                new_active.append({'w': [wc], 'p': [pp[pi]], 's': [ps[pi]]})
+                new_active.append({'w': [wc], 'p': [pp[pi]], 's': [ps[pi]],
+                                   'last_det': det_idx})
 
         active = new_active
 

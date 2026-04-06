@@ -99,6 +99,10 @@
       <input type="range" id="match_tolerance" min="0.01" max="0.3" step="0.005">
     </div>
     <div class="slider-group">
+      <label>Search distance (m) <span class="val" id="v_search_distance"></span></label>
+      <input type="range" id="search_distance" min="0.0" max="2.0" step="0.05">
+    </div>
+    <div class="slider-group">
       <label>Min track length <span class="val" id="v_min_track_length"></span></label>
       <input type="range" id="min_track_length" min="2" max="30" step="1">
     </div>
@@ -132,7 +136,7 @@
 <script>
 const SLIDERS = [
   'raster_resolution', 'gaussian_sigma', 'peak_min_height', 'peak_min_dist_m',
-  'window_width', 'window_step', 'match_tolerance',
+  'window_width', 'window_step', 'match_tolerance', 'search_distance',
   'min_track_length', 'spline_smoothing', 'block_height_in',
   'block_height_tol'
 ];
