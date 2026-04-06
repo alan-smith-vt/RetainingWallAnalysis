@@ -44,6 +44,7 @@ DEFAULTS = {
     'raster_resolution': _cfg('JOINT_RASTER_RESOLUTION', 0.01),
     'gaussian_sigma':    _cfg('JOINT_GAUSSIAN_SIGMA', 3.0),
     'peak_min_height':   _cfg('JOINT_PEAK_MIN_HEIGHT', 0.15),
+    'peak_min_dist_m':   0.05,
     'window_width':      _cfg('JOINT_WINDOW_WIDTH', 1.0),
     'window_step':       _cfg('JOINT_WINDOW_STEP', 0.5),
     'match_tolerance':   _cfg('JOINT_MATCH_TOLERANCE', 0.05),
@@ -86,26 +87,25 @@ def rasterize(points, normals, resolution):
             x_edges, z_edges)
 
 
-def detect_peaks(raster_hz, x_edges, z_edges, params):
-    block_h = params['block_height_in'] * FEET_TO_METERS / 12
+def detect_peaks_horizontal(raster, x_edges, z_edges, params):
+    """Detect horizontal joints: slide windows along X, find peaks in Z profiles."""
     res = params['raster_resolution']
     sigma = params['gaussian_sigma']
     min_h = params['peak_min_height']
-    tol = params['block_height_tol']
+    min_dist_m = params.get('peak_min_dist_m', 0.05)
 
     x_c = (x_edges[:-1] + x_edges[1:]) / 2
     z_c = (z_edges[:-1] + z_edges[1:]) / 2
 
-    esp_bins = max(1, int(block_h / res))
-    min_dist = max(1, int(esp_bins * (1 - tol)))
+    min_dist_bins = max(1, int(min_dist_m / res))
     win_cols = max(1, int(params['window_width'] / res))
     step_cols = max(1, int(params['window_step'] / res))
 
     detections = []
     col = 0
-    while col < raster_hz.shape[1]:
-        ce = min(col + win_cols, raster_hz.shape[1])
-        avg = np.mean(raster_hz[:, col:ce], axis=1)
+    while col < raster.shape[1]:
+        ce = min(col + win_cols, raster.shape[1])
+        avg = np.mean(raster[:, col:ce], axis=1)
         cx = np.mean(x_c[col:ce])
 
         if len(avg) < 3:
@@ -113,7 +113,7 @@ def detect_peaks(raster_hz, x_edges, z_edges, params):
             continue
 
         sm = gaussian_filter1d(avg, sigma=sigma)
-        pi, _ = find_peaks(sm, height=min_h, distance=min_dist)
+        pi, _ = find_peaks(sm, height=min_h, distance=min_dist_bins)
 
         if len(pi) > 0:
             detections.append((cx, z_c[pi], sm[pi]))
@@ -122,43 +122,126 @@ def detect_peaks(raster_hz, x_edges, z_edges, params):
     return detections
 
 
-def track(detections, params):
+def detect_peaks_vertical(raster, x_edges, z_edges, params):
+    """Detect vertical joints: slide windows along Z, find peaks in X profiles."""
+    res = params['raster_resolution']
+    sigma = params['gaussian_sigma']
+    min_h = params['peak_min_height']
+    min_dist_m = params.get('peak_min_dist_m', 0.05)
+
+    x_c = (x_edges[:-1] + x_edges[1:]) / 2
+    z_c = (z_edges[:-1] + z_edges[1:]) / 2
+
+    min_dist_bins = max(1, int(min_dist_m / res))
+    win_rows = max(1, int(params['window_width'] / res))
+    step_rows = max(1, int(params['window_step'] / res))
+
+    detections = []
+    row = 0
+    while row < raster.shape[0]:
+        re_ = min(row + win_rows, raster.shape[0])
+        avg = np.mean(raster[row:re_, :], axis=0)
+        cz = np.mean(z_c[row:re_])
+
+        if len(avg) < 3:
+            row += step_rows
+            continue
+
+        sm = gaussian_filter1d(avg, sigma=sigma)
+        pi, _ = find_peaks(sm, height=min_h, distance=min_dist_bins)
+
+        if len(pi) > 0:
+            # For vertical: detection = (window_center_z, peak_x_values, peak_scores)
+            detections.append((cz, x_c[pi], sm[pi]))
+        row += step_rows
+
+    return detections
+
+
+def track_adjacent(detections, params):
+    """Link peaks between adjacent windows only.
+
+    Works for both horizontal and vertical modes — the first element of each
+    detection is the window center (x for horizontal, z for vertical) and the
+    second is the array of peak positions in the other axis.
+    """
     tol = params['match_tolerance']
-    tracks = []
-    active_z = []
+    min_len = int(params['min_track_length'])
 
-    for x, pz, ps in detections:
-        used_t, used_p = set(), set()
+    if not detections:
+        return []
 
-        if active_z:
-            az = np.array(active_z)
-            d = np.abs(az[:, None] - pz[None, :])
-            for fi in np.argsort(d.ravel()):
-                ti, pi = divmod(int(fi), len(pz))
+    finished = []
+    wc0, pp0, ps0 = detections[0]
+    # Each track stores 'w' (window-axis coords) and 'p' (peak-axis coords)
+    active = [{'w': [wc0], 'p': [pp0[i]], 's': [ps0[i]]} for i in range(len(pp0))]
+
+    for det_idx in range(1, len(detections)):
+        wc, pp, ps = detections[det_idx]
+        new_active = []
+        used_p = set()
+
+        if active and len(pp) > 0:
+            active_pos = np.array([t['p'][-1] for t in active])
+            dists = np.abs(active_pos[:, None] - pp[None, :])
+
+            used_t = set()
+            for fi in np.argsort(dists.ravel()):
+                ti, pi = divmod(int(fi), len(pp))
                 if ti in used_t or pi in used_p:
                     continue
-                if d[ti, pi] > tol:
+                if dists[ti, pi] > tol:
                     break
-                tracks[ti]['x'].append(x)
-                tracks[ti]['z'].append(pz[pi])
-                tracks[ti]['s'].append(ps[pi])
-                active_z[ti] = pz[pi]
+                active[ti]['w'].append(wc)
+                active[ti]['p'].append(pp[pi])
+                active[ti]['s'].append(ps[pi])
+                new_active.append(active[ti])
                 used_t.add(ti)
                 used_p.add(pi)
 
-        for pi in range(len(pz)):
+            for ti in range(len(active)):
+                if ti not in used_t:
+                    finished.append(active[ti])
+        else:
+            finished.extend(active)
+
+        for pi in range(len(pp)):
             if pi not in used_p:
-                tracks.append({'x': [x], 'z': [pz[pi]], 's': [ps[pi]]})
-                active_z.append(pz[pi])
+                new_active.append({'w': [wc], 'p': [pp[pi]], 's': [ps[pi]]})
 
-    min_len = int(params['min_track_length'])
-    tracks = [t for t in tracks if len(t['x']) >= min_len]
+        active = new_active
 
-    # classify
+    finished.extend(active)
+
+    # Convert to x/z format and filter by min length
+    tracks = []
+    for t in finished:
+        if len(t['w']) >= min_len:
+            tracks.append(t)
+    return tracks
+
+
+def tracks_to_xz(tracks, mode):
+    """Convert generic w/p tracks to x/z tracks for plotting.
+
+    Horizontal: w=x, p=z.  Vertical: w=z, p=x.
+    """
+    result = []
+    for t in tracks:
+        if mode == 'horizontal':
+            result.append({'x': t['w'], 'z': t['p'], 's': t['s'],
+                           'mz': np.mean(t['p'])})
+        else:
+            result.append({'x': t['p'], 'z': t['w'], 's': t['s'],
+                           'mz': np.mean(t['w'])})
+    return result
+
+
+def classify_tracks(tracks, params):
+    """Classify tracks as joint or crack based on block spacing."""
     block_h = params['block_height_in'] * FEET_TO_METERS / 12
     bt = params['block_height_tol']
-    for t in tracks:
-        t['mz'] = np.mean(t['z'])
+
     tracks.sort(key=lambda t: t['mz'])
 
     def ok(z1, z2):
@@ -205,30 +288,38 @@ def fig_to_base64(fig):
     return base64.b64encode(buf.read()).decode('utf-8')
 
 
-def make_raster_plot(raster_hz, raster_vt, x_edges, z_edges, params):
+def make_raster_plot(raster_hz, raster_vt, x_edges, z_edges, params, mode):
     xc = (x_edges[:-1] + x_edges[1:]) / 2
     zc = (z_edges[:-1] + z_edges[1:]) / 2
     ext = [xc[0], xc[-1], zc[0], zc[-1]]
-    bh = int(params['block_height_in'])
 
     fig, axes = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
     im0 = axes[0].imshow(raster_hz, aspect='auto', origin='lower',
                          extent=ext, cmap='hot', interpolation='nearest')
     plt.colorbar(im0, ax=axes[0], label='|Nz|', shrink=0.8)
     axes[0].set_ylabel("Z (m)")
-    axes[0].set_title("Horizontal Joint Score — block height = %d in" % bh)
+    axes[0].set_title("Horizontal Joint Score (|Nz|)")
 
     im1 = axes[1].imshow(raster_vt, aspect='auto', origin='lower',
                          extent=ext, cmap='hot', interpolation='nearest')
     plt.colorbar(im1, ax=axes[1], label='|Nx|', shrink=0.8)
     axes[1].set_xlabel("X (m)")
     axes[1].set_ylabel("Z (m)")
-    axes[1].set_title("Vertical Joint Score")
+    axes[1].set_title("Vertical Joint Score (|Nx|)")
+
+    # Highlight which raster is active
+    active_idx = 0 if mode == 'horizontal' else 1
+    for i, ax in enumerate(axes):
+        if i == active_idx:
+            for spine in ax.spines.values():
+                spine.set_edgecolor('#7fbbf0')
+                spine.set_linewidth(2)
+
     fig.tight_layout()
     return fig_to_base64(fig)
 
 
-def make_profiles_plot(raster_hz, x_edges, z_edges, detections, params):
+def make_profiles_plot(raster, x_edges, z_edges, detections, params, mode):
     if not detections:
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.text(0.5, 0.5, 'No detections', ha='center', va='center',
@@ -239,7 +330,6 @@ def make_profiles_plot(raster_hz, x_edges, z_edges, detections, params):
     xc = (x_edges[:-1] + x_edges[1:]) / 2
     res = params['raster_resolution']
     sigma = params['gaussian_sigma']
-    block_h = params['block_height_in'] * FEET_TO_METERS / 12
 
     n_samples = min(6, len(detections))
     indices = np.linspace(0, len(detections)-1, n_samples, dtype=int)
@@ -251,48 +341,54 @@ def make_profiles_plot(raster_hz, x_edges, z_edges, detections, params):
     wc = max(1, int(params['window_width'] / res))
 
     for ax, idx in zip(axes, indices):
-        cx, pz, ps = detections[idx]
-        ci = np.argmin(np.abs(xc - cx))
-        cs = max(0, ci - wc // 2)
-        ce = min(raster_hz.shape[1], cs + wc)
-        col = np.mean(raster_hz[:, cs:ce], axis=1)
-        sm = gaussian_filter1d(col, sigma=sigma)
+        wc_val, pp, ps = detections[idx]
 
-        ax.plot(col, zc, 'gray', alpha=0.4, linewidth=0.8, label='Raw')
-        ax.plot(sm, zc, 'steelblue', linewidth=1.5, label='Smoothed')
-        ax.scatter(ps, pz, color='red', s=50, zorder=5, label='Peaks')
+        if mode == 'horizontal':
+            # Window along X, profile along Z
+            ci = np.argmin(np.abs(xc - wc_val))
+            cs = max(0, ci - wc // 2)
+            ce = min(raster.shape[1], cs + wc)
+            profile = np.mean(raster[:, cs:ce], axis=1)
+            sm = gaussian_filter1d(profile, sigma=sigma)
+            ax.plot(profile, zc, 'gray', alpha=0.4, linewidth=0.8, label='Raw')
+            ax.plot(sm, zc, 'steelblue', linewidth=1.5, label='Smoothed')
+            ax.scatter(ps, pp, color='red', s=50, zorder=5, label='Peaks')
+            ax.set_title(f"X={wc_val:.1f}m", fontsize=9)
+            ax.set_xlabel("Score", fontsize=8)
+            if ax is axes[0]:
+                ax.set_ylabel("Z (m)")
+        else:
+            # Window along Z, profile along X
+            ci = np.argmin(np.abs(zc - wc_val))
+            cs = max(0, ci - wc // 2)
+            ce = min(raster.shape[0], cs + wc)
+            profile = np.mean(raster[cs:ce, :], axis=0)
+            sm = gaussian_filter1d(profile, sigma=sigma)
+            ax.plot(xc, profile, 'gray', alpha=0.4, linewidth=0.8, label='Raw')
+            ax.plot(xc, sm, 'steelblue', linewidth=1.5, label='Smoothed')
+            ax.scatter(pp, ps, color='red', s=50, zorder=5, label='Peaks')
+            ax.set_title(f"Z={wc_val:.1f}m", fontsize=9)
+            ax.set_ylabel("Score", fontsize=8)
+            if ax is axes[0]:
+                ax.set_xlabel("X (m)")
 
-        if len(pz) > 0:
-            z0 = pz[0]
-            zz = z0
-            while zz <= zc[-1]:
-                ax.axhline(zz, color='orange', alpha=0.3, linewidth=0.8, ls='--')
-                zz += block_h
-            zz = z0 - block_h
-            while zz >= zc[0]:
-                ax.axhline(zz, color='orange', alpha=0.3, linewidth=0.8, ls='--')
-                zz -= block_h
-
-        ax.set_title(f"X={cx:.1f}m", fontsize=9)
-        ax.set_xlabel("Score", fontsize=8)
         if ax is axes[0]:
-            ax.set_ylabel("Z (m)")
             ax.legend(fontsize=7)
         ax.tick_params(labelsize=7)
 
-    fig.suptitle("Vertical Profiles (orange = expected block grid)", fontsize=11)
+    direction = "Horizontal" if mode == 'horizontal' else "Vertical"
+    fig.suptitle("%s Joint Profiles" % direction, fontsize=11)
     fig.tight_layout()
     return fig_to_base64(fig)
 
 
-def make_tracked_plot(raster_hz, x_edges, z_edges, tracks, splines, params):
+def make_tracked_plot(raster, x_edges, z_edges, tracks, splines, params, mode):
     xc = (x_edges[:-1] + x_edges[1:]) / 2
     zc = (z_edges[:-1] + z_edges[1:]) / 2
     ext = [xc[0], xc[-1], zc[0], zc[-1]]
-    bh = int(params['block_height_in'])
 
     fig, ax = plt.subplots(figsize=(14, 7))
-    ax.imshow(raster_hz, aspect='auto', origin='lower', extent=ext,
+    ax.imshow(raster, aspect='auto', origin='lower', extent=ext,
               cmap='hot', interpolation='nearest', alpha=0.6)
 
     jt = [t for t in tracks if t.get('label') == 'joint']
@@ -321,8 +417,9 @@ def make_tracked_plot(raster_hz, x_edges, z_edges, tracks, splines, params):
     ax.legend(handles=legend, fontsize=10, loc='upper right')
     ax.set_xlabel("X (m)")
     ax.set_ylabel("Z (m)")
-    ax.set_title("Tracked Joints (%d joints, %d cracks, block=%din)" % (
-        len(jt), len(ct), bh))
+    direction = "Horizontal" if mode == 'horizontal' else "Vertical"
+    ax.set_title("Tracked %s Joints (%d joints, %d cracks)" % (
+        direction, len(jt), len(ct)))
     fig.tight_layout()
     return fig_to_base64(fig)
 
@@ -361,29 +458,42 @@ def info():
 @app.route('/update', methods=['POST'])
 def update():
     params = request.json
+    mode = params.pop('mode', 'horizontal')
 
     pts = STATE['points']
     normals = STATE['normals']
 
     raster_hz, raster_vt, xe, ze = rasterize(pts, normals, params['raster_resolution'])
-    detections = detect_peaks(raster_hz, xe, ze, params)
-    tracks = track(detections, params)
-    jt = [t for t in tracks if t['label'] == 'joint']
+
+    # Pick the right raster and detection function based on mode
+    if mode == 'vertical':
+        active_raster = raster_vt
+        detections = detect_peaks_vertical(active_raster, xe, ze, params)
+    else:
+        active_raster = raster_hz
+        detections = detect_peaks_horizontal(active_raster, xe, ze, params)
+
+    raw_tracks = track_adjacent(detections, params)
+    tracks_xz = tracks_to_xz(raw_tracks, mode)
+    tracks_xz = classify_tracks(tracks_xz, params)
+    jt = [t for t in tracks_xz if t['label'] == 'joint']
     splines = fit_splines(jt, params)
 
     n_det = sum(len(d[1]) for d in detections)
     n_joints = len(jt)
-    n_cracks = len([t for t in tracks if t['label'] == 'crack'])
+    n_cracks = len([t for t in tracks_xz if t['label'] == 'crack'])
 
     return jsonify({
-        'raster': make_raster_plot(raster_hz, raster_vt, xe, ze, params),
-        'profiles': make_profiles_plot(raster_hz, xe, ze, detections, params),
-        'tracked': make_tracked_plot(raster_hz, xe, ze, tracks, splines, params),
+        'raster': make_raster_plot(raster_hz, raster_vt, xe, ze, params, mode),
+        'profiles': make_profiles_plot(active_raster, xe, ze, detections, params, mode),
+        'tracked': make_tracked_plot(active_raster, xe, ze, tracks_xz, splines, params, mode),
         'stats': {
             'n_detections': n_det,
             'n_joints': n_joints,
             'n_cracks': n_cracks,
-            'raster_shape': list(raster_hz.shape),
+            'n_tracks_total': len(tracks_xz),
+            'raster_shape': list(active_raster.shape),
+            'mode': mode,
         }
     })
 
