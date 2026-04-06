@@ -92,12 +92,31 @@ def _write_ply_with_scalars(points, filePath, colors, scalars):
             f.write(scalar_array[i:i+1].tobytes())
 
 
-def getCrossSection(slicePoints, linePoints, filePath, k, slopeColor):
-    points = np.vstack([slicePoints, linePoints])
+def getCrossSection(slicePoints, sliceColors, expectedSlopeLine, linePoints, k, slopeColor):
+    """Build a cross-section combining slice points, expected slope, and fitted slope.
+
+    slicePoints: point cloud slice (rotated space)
+    sliceColors: displacement-colored RGB (0-1 float) for slicePoints
+    expectedSlopeLine: expected slope reference line (rotated space)
+    linePoints: fitted piecewise slope line
+    k: vertical offset index for stacking
+    slopeColor: RGB (0-1) for fitted slope line
+    """
+    # Expected slope: project to YZ plane (X=0) with white color
+    exp_yz = expectedSlopeLine.copy()
+    exp_yz[:, 0] = np.mean(slicePoints[:, 0])  # flatten to single X
+
+    points = np.vstack([slicePoints, exp_yz, linePoints])
     points[:, 1] = points[:, 1] - np.min(points[:, 1]) - k
-    colors_1 = np.ones_like(slicePoints) * np.array([255, 255, 255])
-    colors_2 = np.ones_like(linePoints) * np.array(slopeColor)
-    colors = np.vstack([colors_1, colors_2])
+
+    # Slice points: displacement colors (convert 0-1 float to 0-255)
+    colors_slice = np.clip(sliceColors * 255, 0, 255).astype(np.float64)
+    # Expected slope: white
+    colors_exp = np.ones_like(exp_yz) * np.array([255, 255, 255])
+    # Fitted slope: colored by slope value
+    colors_line = np.ones_like(linePoints) * np.array(slopeColor)
+
+    colors = np.vstack([colors_slice, colors_exp, colors_line])
     return points, colors
 
 
@@ -500,6 +519,7 @@ if __name__ == '__main__':
             line_scalars = []
             pc_slices = []
             pc_slice_colors = []
+            pc_slice_colors_list = []  # per-slice colors for cross sections
             pc_slice_displacements = []
             slope_values = []
             pc_slices_rotated = []
@@ -535,6 +555,7 @@ if __name__ == '__main__':
                 pc_slices_rotated.append(r['pc_slice_rotated'])
                 pc_slices.append(r['pc_slice_unrotated'])
                 pc_slice_colors.append(r['pc_slice_colors'])
+                pc_slice_colors_list.append(r['pc_slice_colors'])
                 pc_slice_displacements.append(r['pc_slice_displacement'])
 
             pc_slices_unrolled = unrollSlices([s.copy() for s in pc_slices_rotated], spacing)
@@ -555,10 +576,19 @@ if __name__ == '__main__':
 
             points_temp = []
             colors_temp = []
-            for k in range(len(pc_slices_rotated)):
-                pts, cols = getCrossSection(pc_slices_rotated[k], lines_rotated[k], "outputs/point_clouds/original/cross_section_%d_%d.ply" % (wall_id, k), k, value_to_rgb_jet(slope_values[k][0])[:3])
+            cs_idx = 0
+            for k in range(0, len(pc_slices_rotated), 2):
+                pts, cols = getCrossSection(
+                    pc_slices_rotated[k],
+                    pc_slice_colors_list[k],
+                    expected_slope_lines_rotated[k],
+                    lines_rotated[k],
+                    cs_idx,
+                    value_to_rgb_jet(slope_values[k][0])[:3],
+                )
                 points_temp.append(pts)
                 colors_temp.append(cols)
+                cs_idx += 1
             pts = np.vstack(points_temp)
             cols = np.vstack(colors_temp)
             savePoints(pts, "outputs/point_clouds/unrolled/cross_section_%d.ply" % wall_id, colors=cols)
