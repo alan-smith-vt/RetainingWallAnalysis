@@ -510,7 +510,14 @@ def update():
 
     raw_tracks = track_adjacent(detections, params)
     tracks_xz = tracks_to_xz(raw_tracks, mode)
-    tracks_xz = classify_tracks(tracks_xz, params)
+
+    if mode == 'horizontal':
+        tracks_xz = classify_tracks(tracks_xz, params)
+    else:
+        # No joint/crack classification for vertical — fit all tracks
+        for t in tracks_xz:
+            t['label'] = 'joint'
+
     jt = [t for t in tracks_xz if t['label'] == 'joint']
     splines = fit_splines(jt, params)
 
