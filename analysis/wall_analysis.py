@@ -109,12 +109,10 @@ def getCrossSection(slicePoints, sliceColors, expectedSlopeLine, linePoints, k, 
     points = np.vstack([slicePoints, exp_yz, linePoints])
     points[:, 1] = points[:, 1] - np.min(points[:, 1]) - k
 
-    # Slice points: displacement colors (convert 0-1 float to 0-255)
-    colors_slice = np.clip(sliceColors * 255, 0, 255).astype(np.float64)
-    # Expected slope: white
-    colors_exp = np.ones_like(exp_yz) * np.array([255, 255, 255])
-    # Fitted slope: colored by slope value
-    colors_line = np.ones_like(linePoints) * np.array(slopeColor)
+    # All colors as 0-255 uint8
+    colors_slice = np.clip(sliceColors * 255, 0, 255).astype(np.uint8)
+    colors_exp = np.full_like(exp_yz, 255, dtype=np.uint8)
+    colors_line = np.tile((np.array(slopeColor) * 255).astype(np.uint8), (len(linePoints), 1))
 
     colors = np.vstack([colors_slice, colors_exp, colors_line])
     return points, colors
