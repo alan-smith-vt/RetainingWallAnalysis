@@ -589,6 +589,25 @@ def main():
                                tracks_aligned, total_m, z_extent,
                                "joint_lines_%s" % wall_id)
 
+        # ── Generate legends with actual data ranges ──────────────────────
+        if np.any(assigned):
+            from rendering.colorbar import create_settlement_colorbar, create_rotation_colorbar
+
+            valid_settle = settle[assigned]
+            valid_settle = valid_settle[~np.isnan(valid_settle)]
+            settle_max_m = max(0.001, np.percentile(valid_settle, 95))
+
+            valid_rot = dzdx[assigned]
+            valid_rot = valid_rot[~np.isnan(valid_rot)]
+            rot_max = max(0.001, np.percentile(np.abs(valid_rot), 95))
+
+            create_settlement_colorbar(
+                settle_max_m,
+                save_path=os.path.join(IMAGE_DIR, "legend_settlement.png"))
+            create_rotation_colorbar(
+                rot_max,
+                save_path=os.path.join(IMAGE_DIR, "legend_rotation.png"))
+
     printf("Done.")
 
 

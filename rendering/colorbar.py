@@ -331,23 +331,22 @@ def _rotation_gradient(ax, range_pct):
     ax.set_xlim(-range_pct, range_pct)
 
 
-def _draw_settlement_bar(ax):
-    """Draw settlement colorbar: blue=0 (no settlement) to red=max settlement."""
-    try:
-        from config import SETTLEMENT_MAX_IN
-    except ImportError:
-        SETTLEMENT_MAX_IN = 1.0
-    max_in = SETTLEMENT_MAX_IN
+def _draw_settlement_bar(ax, max_settle_m):
+    """Draw settlement colorbar: blue=0 (no settlement) to red=max settlement.
+
+    max_settle_m: actual 95th percentile settlement in meters (from analysis).
+    """
+    max_in = max_settle_m * METERS_TO_FEET * 12
 
     _settlement_gradient(ax, max_in)
 
     ticks = [0, max_in / 4, max_in / 2, 3 * max_in / 4, max_in]
     labels = [
         "0\"",
-        f"{max_in / 4:.2f}\"",
-        f"{max_in / 2:.2f}\"",
-        f"{3 * max_in / 4:.2f}\"",
-        f"{max_in:.2f}\"",
+        f"{max_in / 4:.3f}\"",
+        f"{max_in / 2:.3f}\"",
+        f"{3 * max_in / 4:.3f}\"",
+        f"{max_in:.3f}\"",
     ]
     ax.set_xticks(ticks)
     ax.set_xticklabels([])
@@ -372,23 +371,22 @@ def _draw_settlement_bar(ax):
                   fontsize=22, fontweight='bold', labelpad=55)
 
 
-def _draw_rotation_bar(ax):
-    """Draw rotation colorbar: symmetric coolwarm around 0."""
-    try:
-        from config import ROTATION_MAX_PCT
-    except ImportError:
-        ROTATION_MAX_PCT = 2.0
-    range_pct = ROTATION_MAX_PCT
+def _draw_rotation_bar(ax, max_rotation):
+    """Draw rotation colorbar: symmetric coolwarm around 0.
+
+    max_rotation: actual 95th percentile |dZ/dX| from analysis (dimensionless).
+    """
+    range_pct = max_rotation * 100  # convert to percent
 
     _rotation_gradient(ax, range_pct)
 
     ticks = [-range_pct, -range_pct / 2, 0, range_pct / 2, range_pct]
     labels = [
-        f"-{range_pct:.1f}%",
-        f"-{range_pct / 2:.1f}%",
+        f"-{range_pct:.2f}%",
+        f"-{range_pct / 2:.2f}%",
         "0%",
-        f"+{range_pct / 2:.1f}%",
-        f"+{range_pct:.1f}%",
+        f"+{range_pct / 2:.2f}%",
+        f"+{range_pct:.2f}%",
     ]
     ax.set_xticks(ticks)
     ax.set_xticklabels([])
@@ -414,40 +412,40 @@ def _draw_rotation_bar(ax):
                   fontsize=22, fontweight='bold', labelpad=55)
 
 
-def create_settlement_colorbar(save_path=None):
-    """Standalone settlement colorbar."""
+def create_settlement_colorbar(max_settle_m, save_path=None):
+    """Standalone settlement colorbar. max_settle_m is the 95th pctile in meters."""
     fig, ax = plt.subplots(figsize=(10, 3))
-    _draw_settlement_bar(ax)
+    _draw_settlement_bar(ax, max_settle_m)
     _save_or_show(fig, save_path)
 
 
-def create_rotation_colorbar(save_path=None):
-    """Standalone rotation colorbar."""
+def create_rotation_colorbar(max_rotation, save_path=None):
+    """Standalone rotation colorbar. max_rotation is the 95th pctile |dZ/dX|."""
     fig, ax = plt.subplots(figsize=(10, 3))
-    _draw_rotation_bar(ax)
+    _draw_rotation_bar(ax, max_rotation)
     _save_or_show(fig, save_path)
 
 
 def create_all_colorbars(save_dir="outputs/images/"):
-    """Generate individual and combined legend images."""
+    """Generate individual and combined legend images.
+
+    Settlement and rotation legends are NOT generated here — they require
+    actual data ranges computed by analysis/joint_detection.py at runtime.
+    """
     os.makedirs(save_dir, exist_ok=True)
 
     create_displacement_colorbar(save_path=os.path.join(save_dir, "legend_displacement.png"))
     create_slope_colorbar(save_path=os.path.join(save_dir, "legend_slope.png"))
     create_new_slope_colorbar(save_path=os.path.join(save_dir, "legend_new_slope.png"))
-    create_settlement_colorbar(save_path=os.path.join(save_dir, "legend_settlement.png"))
-    create_rotation_colorbar(save_path=os.path.join(save_dir, "legend_rotation.png"))
 
     combined_path = os.path.join(save_dir, "legend_colorbars.png")
 
-    fig, axes = plt.subplots(5, 1, figsize=(10, 14))
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8))
 
     for ax_idx, create_fn in enumerate([
         _draw_displacement_bar,
         _draw_slope_bar,
         _draw_new_slope_bar,
-        _draw_settlement_bar,
-        _draw_rotation_bar,
     ]):
         create_fn(axes[ax_idx])
 
