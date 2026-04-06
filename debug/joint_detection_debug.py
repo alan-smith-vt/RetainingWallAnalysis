@@ -327,7 +327,7 @@ def plot_joint_lines(raster_hz, x_edges, z_edges, tracks, output_path):
     for track in tracks:
         xs = [p[0] for p in track]
         zs = [p[1] for p in track]
-        ax.plot(xs, zs, '-', color='white', linewidth=0.5, solid_capstyle='butt')
+        ax.plot(xs, zs, '-', color='white', linewidth=0.8, solid_capstyle='butt')
 
     ax.set_xlabel("X — along wall (m)")
     ax.set_ylabel("Z — elevation (m)")
